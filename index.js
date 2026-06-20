@@ -1,9 +1,9 @@
-// 봇을 실행하는 메인 파일입니다. Railway는 이 파일을 실행해서 봇을 켭니다.
+// 봇을 실행하는 메인 파일입니다. Render는 이 파일을 실행해서 봇을 켭니다.
 
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -18,21 +18,45 @@ client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
+const commandData = [];
+
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command = require(filePath);
 
   if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command);
+    commandData.push(command.data.toJSON());
     console.log(`✅ 명령어 로드됨: ${command.data.name}`);
   } else {
     console.warn(`⚠️ ${file} 파일에 data 또는 execute가 없어서 건너뜁니다.`);
   }
 }
 
+// 봇이 켜질 때마다 슬래시 명령어를 디스코드에 자동으로 등록
+// (Shell 없이도 명령어가 항상 최신 상태로 유지되도록)
+async function registerSlashCommands() {
+  if (!process.env.CLIENT_ID) {
+    console.warn('⚠️ CLIENT_ID가 없어서 슬래시 명령어를 등록하지 못했어요.');
+    return;
+  }
+  try {
+    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+    console.log(`🔄 ${commandData.length}개의 슬래시 명령어를 등록하는 중...`);
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commandData },
+    );
+    console.log('✅ 슬래시 명령어 등록 완료!');
+  } catch (err) {
+    console.error('❌ 슬래시 명령어 등록 중 오류:', err);
+  }
+}
+
 // 봇이 켜졌을 때 한 번 실행
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`🤖 ${client.user.tag} 로 로그인 완료! 봇이 온라인 상태입니다.`);
+  await registerSlashCommands();
 });
 
 // 슬래시 명령어 실행 + 버튼/모달 상호작용 처리
@@ -78,7 +102,7 @@ client.on('interactionCreate', async (interaction) => {
 
 // 디스코드 토큰으로 실제 로그인 (봇 켜기)
 if (!process.env.DISCORD_TOKEN) {
-  console.error('❌ .env 파일에 DISCORD_TOKEN이 없어요. .env.example을 참고해서 .env 파일을 만들어주세요.');
+  console.error('❌ .env 파일에 DISCORD_TOKEN이 없어요.');
   process.exit(1);
 }
 
