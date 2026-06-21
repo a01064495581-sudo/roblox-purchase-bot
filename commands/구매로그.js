@@ -65,28 +65,75 @@ function calculatePrice(robux) {
   return `${won.toLocaleString()}원`;
 }
 
-// Ticket Tool 양식 메시지(임베드)에서 닉네임/게임/로벅스 수량을 추출
-// 항상 "로벅스 구매 수량 -> 로블록스 닉네임 -> 구매하실 게임 -> 구매하실 게임패스" 순서로 고정된 양식 기준
-function parseTicketForm(message) {
-  // Ticket Tool은 보통 같은 메시지 안에 여러 개의 임베드를 보냄 (안내문 임베드 + 양식 임베드)
-  // 모든 임베드의 모든 필드를 하나로 모아서 검색
-  const allFields = [];
-  for (const embed of message.embeds) {
-    if (embed.fields) allFields.push(...embed.fields);
+// ---------------------------------------------------------------------------
+// Ticket Tool 양식 파싱
+//
+// Ticket Tool은 fields를 쓰지 않고, 모든 질문/답변을 embed.description 안에
+// 줄글(보통 "질문\n답변" 형태, 줄바꿈으로 구분)로 통째로 넣습니다.
+// 그래서 fields가 아니라 description 텍스트를 줄 단위로 읽어서
+// "라벨" 다음에 오는 줄(또는 같은 줄의 나머지 텍스트)을 값으로 추출합니다.
+//
+// 라벨은 양식 작성 시점의 정확한 표기와 살짝 다를 수 있어 유연하게 매칭합니다.
+// ---------------------------------------------------------------------------
+
+const LABELS = {
+  robux: ['로벅스 구매 수량', '구매 수량', '로벅스 수량'],
+  nickname: ['로블록스 닉네임', '닉네임'],
+  // "구매하실 게임"과 "구매하실 게임패스"를 구분해야 하므로
+  // game은 뒤에 "패스"가 붙지 않는 경우만 매칭
+  game: ['구매하실 게임패스', '구매하실 게임', '게임패스', '게임 이름', '게임'],
+};
+
+// description 전체 텍스트에서 각 라벨에 대응하는 값을 추출
+function extractValue(lines, labelCandidates) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    for (const label of labelCandidates) {
+      if (!line.includes(label)) continue;
+
+      // 같은 줄에 "라벨: 값" 또는 "라벨 값" 형태로 값이 같이 있는 경우
+      const afterLabel = line.slice(line.indexOf(label) + label.length).trim();
+      const cleanedSameLine = afterLabel.replace(/^[:\-—>\s]+/, '').trim();
+
+      if (cleanedSameLine) {
+        return cleanedSameLine;
+      }
+
+      // 같은 줄에 값이 없으면, 그 다음 비어있지 않은 줄을 값으로 사용
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j].trim();
+        if (next) return next;
+      }
+    }
   }
-  if (allFields.length === 0) return null;
+  return null;
+}
 
-  const getFieldValue = (nameKeyword) => {
-    const field = allFields.find(f => f.name.includes(nameKeyword));
-    return field ? field.value.trim() : null;
-  };
+// 임베드 description들을 모두 합쳐서 줄 단위로 분리
+function getAllLines(message) {
+  const lines = [];
+  for (const embed of message.embeds) {
+    if (!embed.description) continue;
+    // Ticket Tool은 \n으로 줄을 구분하지만 혹시 \r\n인 경우도 대비
+    const embedLines = embed.description.split(/\r?\n/);
+    lines.push(...embedLines);
+  }
+  return lines;
+}
 
-  const robuxText = getFieldValue('로벅스 구매 수량');
-  const nickname = getFieldValue('로블록스 닉네임');
-  // "구매하실 게임"은 "구매하실 게임패스"라는 다른 필드명과 겹치지 않도록
-  // 정확히 "구매하실 게임"으로 끝나는 필드만 찾음
-  const gameField = allFields.find(f => f.name.trim() === '구매하실 게임');
-  const game = gameField ? gameField.value.trim() : null;
+// Ticket Tool 양식 메시지(임베드)에서 닉네임/게임/로벅스 수량을 추출
+// description 텍스트 기반 파싱 (fields는 비어있는 경우가 대부분이라 사용하지 않음)
+function parseTicketForm(message) {
+  if (message.embeds.length === 0) return null;
+
+  const lines = getAllLines(message);
+  if (lines.length === 0) return null;
+
+  const robuxText = extractValue(lines, LABELS.robux);
+  const nickname = extractValue(lines, LABELS.nickname);
+  const game = extractValue(lines, LABELS.game);
 
   if (!robuxText || !nickname || !game) return null;
 
