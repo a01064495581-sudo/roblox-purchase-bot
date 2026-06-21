@@ -6,6 +6,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = require('discord.js');
 const { checkBumpMessage } = require('./commands/bump-reminder.js');
+const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/계좌가격.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
 // 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
@@ -130,6 +131,19 @@ client.on('interactionCreate', async (interaction) => {
         }
       }
     }
+
+    // 계좌/가격 버튼 처리 (구매로그와 완전히 독립)
+    if (
+      interaction.customId === 'ticket_account_select' ||
+      interaction.customId === 'ticket_account_show' ||
+      interaction.customId.startsWith('ticket_price_')
+    ) {
+      try {
+        await handleInfoComponent(interaction);
+      } catch (err) {
+        console.error('계좌/가격 버튼 처리 중 오류:', err);
+      }
+    }
   }
 });
 
@@ -153,6 +167,13 @@ client.on('messageCreate', async (message) => {
     }
   } catch (err) {
     console.error('티켓 양식 감지 처리 중 오류:', err);
+  }
+
+  // 계좌/가격 버튼 감지 (구매로그와 완전히 독립)
+  try {
+    await handleTicketInfoButtons(message);
+  } catch (err) {
+    console.error('계좌/가격 버튼 감지 처리 중 오류:', err);
   }
 });
 
@@ -179,6 +200,13 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     }
   } catch (err) {
     console.error('티켓 양식 감지(수정) 처리 중 오류:', err);
+  }
+
+  // 계좌/가격 버튼 감지 (수정된 메시지에도 적용)
+  try {
+    await handleTicketInfoButtons(newMessage);
+  } catch (err) {
+    console.error('계좌/가격 버튼 감지(수정) 처리 중 오류:', err);
   }
 });
 
