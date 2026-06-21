@@ -18,7 +18,7 @@ module.exports = {
     const user = interaction.options.getUser('유저');
 
     const message = `${user}
-<a:2bow:1451284074734817320> 구매해주셔서 감사드립니다. <a:2bow:1451284074734817320>
+<a:1574rainbowheart:1516382154618310776> 구매해주셔서 감사드립니다. <a:1574rainbowheart:1516382154618310776> 
 <a:2bow:1516614678262972536> 친구들한테 서버 추천 해주시면 감사하겠습니다. <a:2bow:1516614678262972536>
 <a:2MYaowlcatHeart:1515199465777139783> 다음에도 저희 서버 이용 부탁드려요. <a:2MYaowlcatHeart:1515199465777139783>
 <a:5PikaStab:1516614149726011574> 좋은 하루 보내세요~ <a:5PikaStab:1516614149726011574>
