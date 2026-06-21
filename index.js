@@ -128,12 +128,23 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// 일반 메시지 감지 (현재는 /bump 리마인더 용도로만 사용)
+// 일반 메시지 감지
+// 1) /bump 리마인더 체크
+// 2) Ticket Tool 양식 메시지 감지 -> "구매로그 작성" 버튼 자동 부착
 client.on('messageCreate', async (message) => {
   try {
     await checkBumpMessage(message);
   } catch (err) {
     console.error('bump 리마인더 처리 중 오류:', err);
+  }
+
+  try {
+    const purchaseLogCommand = client.commands.get('구매로그');
+    if (purchaseLogCommand?.handleTicketFormMessage) {
+      await purchaseLogCommand.handleTicketFormMessage(message);
+    }
+  } catch (err) {
+    console.error('티켓 양식 감지 처리 중 오류:', err);
   }
 });
 
