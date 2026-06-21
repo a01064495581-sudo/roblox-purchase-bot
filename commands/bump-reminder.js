@@ -8,9 +8,16 @@ let bumpTimer = null;
 
 function startBumpReminder(client) {
   client.on('messageCreate', async (message) => {
-    // Disboard 봇만 감지 (ID: 302050872383242240)
+    // Disboard 봇만 감지 (이름으로 감지)
     if (!message.author.bot) return;
-    if (message.author.id !== '302050872383242240') return;
+    if (!message.author.username.toUpperCase().includes('DISBOARD')) return;
+
+    // 디버그: 임베드 내용 출력
+    console.log('🔍 [범프디버그] 디스보드 메시지 감지!');
+    message.embeds?.forEach((embed, i) => {
+      console.log(`🔍 [범프디버그] 임베드${i} title: ${embed.title}`);
+      console.log(`🔍 [범프디버그] 임베드${i} description: ${embed.description}`);
+    });
 
     // 범프 완료 메시지 감지 (description 또는 title로 감지)
     const isBumpDone = message.embeds?.some(embed =>
