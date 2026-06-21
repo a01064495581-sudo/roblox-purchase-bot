@@ -4,7 +4,7 @@ require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = require('discord.js');
 const { checkBumpMessage } = require('./commands/bump-reminder.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
@@ -39,6 +39,8 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
   ],
+  // messageUpdate 이벤트가 캐시에 없는(오래된) 메시지에도 발생하도록 partial 허용
+  partials: [Partials.Message, Partials.Channel],
 });
 
 // commands 폴더 안의 모든 명령어 파일을 자동으로 읽어서 등록
@@ -148,6 +150,32 @@ client.on('messageCreate', async (message) => {
     }
   } catch (err) {
     console.error('티켓 양식 감지 처리 중 오류:', err);
+  }
+});
+
+// 일부 봇(Ticket Tool 포함)은 새 메시지를 보내는 대신, 기존 메시지를 "수정"해서
+// 안내문에 양식 내용을 채워 넣는 경우가 있습니다. 이 경우 messageCreate가 아니라
+// messageUpdate 이벤트가 발생하므로, 같은 처리를 여기에도 적용합니다.
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  try {
+    // partial 메시지면 fetch해서 embeds, author 등 전체 데이터를 채움
+    if (newMessage.partial) {
+      newMessage = await newMessage.fetch();
+    }
+  } catch (err) {
+    console.error('messageUpdate partial fetch 실패:', err);
+    return;
+  }
+
+  console.log(`🔍 [디버그-최상단] messageUpdate 발생! 채널: ${newMessage.channel?.id}, 작성자: ${newMessage.author?.tag}, 봇여부: ${newMessage.author?.bot}, 임베드개수: ${newMessage.embeds?.length}`);
+
+  try {
+    const purchaseLogCommand = client.commands.get('구매로그');
+    if (purchaseLogCommand?.handleTicketFormMessage) {
+      await purchaseLogCommand.handleTicketFormMessage(newMessage);
+    }
+  } catch (err) {
+    console.error('티켓 양식 감지(수정) 처리 중 오류:', err);
   }
 });
 
