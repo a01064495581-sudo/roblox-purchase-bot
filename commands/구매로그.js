@@ -198,8 +198,21 @@ module.exports = {
     if (!message.author.bot) return;
     if (message.embeds.length === 0) return;
 
+    // 디버그: 임베드 구조를 그대로 콘솔에 출력해서 실제 필드명/형태를 확인
+    console.log('🔍 [디버그] 봇 메시지 감지:', message.author.tag);
+    console.log('🔍 [디버그] 임베드 개수:', message.embeds.length);
+    message.embeds.forEach((embed, i) => {
+      console.log(`🔍 [디버그] 임베드 ${i} - title:`, embed.title);
+      console.log(`🔍 [디버그] 임베드 ${i} - description:`, embed.description);
+      console.log(`🔍 [디버그] 임베드 ${i} - fields:`, JSON.stringify(embed.fields, null, 2));
+    });
+
     const parsed = parseTicketForm(message);
-    if (!parsed) return; // 우리가 아는 양식이 아니면 무시
+    console.log('🔍 [디버그] 파싱 결과:', parsed);
+    if (!parsed) {
+      console.log('🔍 [디버그] 파싱 실패로 버튼을 달지 않고 종료합니다.');
+      return; // 우리가 아는 양식이 아니면 무시
+    }
 
     // 티켓을 연 사람(구매자) 찾기: 안내 임베드 본문에 멘션된 첫 유저로 추정
     // 멘션이 안 잡히면 버튼 누른 관리자가 직접 고르게 함
