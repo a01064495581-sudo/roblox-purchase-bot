@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = require('discord.js');
-const { checkBumpMessage } = require('./commands/bump-reminder.js');
+const { startBumpReminder } = require('./commands/bump-reminder.js');
 const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/account-price.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
@@ -89,6 +89,7 @@ async function registerSlashCommands() {
 client.once('ready', async () => {
   console.log(`🤖 ${client.user.tag} 로 로그인 완료! 봇이 온라인 상태입니다.`);
   await registerSlashCommands();
+  startBumpReminder(client);
 });
 
 // 슬래시 명령어 실행 + 버튼/모달 상호작용 처리
