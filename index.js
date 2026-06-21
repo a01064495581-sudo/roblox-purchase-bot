@@ -156,12 +156,6 @@ client.on('messageCreate', async (message) => {
   console.log(`🔍 [디버그-최상단] messageCreate 발생! 채널: ${message.channel.id}, 작성자: ${message.author.tag}, 봇여부: ${message.author.bot}, 임베드개수: ${message.embeds.length}`);
 
   try {
-    await checkBumpMessage(message);
-  } catch (err) {
-    console.error('bump 리마인더 처리 중 오류:', err);
-  }
-
-  try {
     const purchaseLogCommand = client.commands.get('구매로그');
     if (purchaseLogCommand?.handleTicketFormMessage) {
       await purchaseLogCommand.handleTicketFormMessage(message);
