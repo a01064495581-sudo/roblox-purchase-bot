@@ -12,11 +12,15 @@ function startBumpReminder(client) {
     if (!message.author.bot) return;
     if (message.author.id !== '302050872383242240') return;
 
-    // 범프 완료 메시지 감지 (임베드 description에 "Bump done" 포함)
+    // 범프 완료 메시지 감지 (description 또는 title로 감지)
     const isBumpDone = message.embeds?.some(embed =>
       embed.description?.includes('Bump done') ||
       embed.description?.includes('bump done') ||
-      embed.description?.includes('범프')
+      embed.description?.includes('범프') ||
+      embed.description?.includes('서버 갱신 완료') ||
+      embed.description?.includes('갱신 완료') ||
+      embed.title?.includes('DISBOARD') ||
+      embed.title?.includes('공개 서버 목록')
     );
     if (!isBumpDone) return;
 
