@@ -1,0 +1,138 @@
+// 봇을 실행하는 메인 파일입니다. Render는 이 파일을 실행해서 봇을 켭니다.
+
+require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+
+// Render는 "Web Service"로 설정된 경우 포트가 열려있는지 확인합니다.
+// 디스코드 봇 자체는 포트가 필요 없지만, Render가 배포를 비정상으로 판단해
+// 재시작을 반복하는 것을 막기 위해 아주 작은 더미 웹 서버를 같이 띄웁니다.
+// (실제 기능은 없고, 그냥 "살아있다"는 응답만 보냅니다)
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('봇이 정상적으로 실행 중입니다.');
+}).listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 더미 웹 서버가 포트 ${PORT}에서 대기 중 (Render 포트 감지용)`);
+});
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+// commands 폴더 안의 모든 명령어 파일을 자동으로 읽어서 등록
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+const commandData = [];
+
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const command = require(filePath);
+
+  if ('data' in command && 'execute' in command) {
+    client.commands.set(command.data.name, command);
+    commandData.push(command.data.toJSON());
+    console.log(`✅ 명령어 로드됨: ${command.data.name}`);
+  } else {
+    console.warn(`⚠️ ${file} 파일에 data 또는 execute가 없어서 건너뜁니다.`);
+  }
+}
+
+// 봇이 켜질 때마다 슬래시 명령어를 디스코드에 자동으로 등록
+async function registerSlashCommands() {
+  if (!process.env.CLIENT_ID) {
+    console.warn('⚠️ CLIENT_ID가 없어서 슬래시 명령어를 등록하지 못했어요.');
+    return;
+  }
+  try {
+    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+    console.log(`🔄 ${commandData.length}개의 슬래시 명령어를 등록하는 중...`);
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commandData },
+    );
+    console.log('✅ 슬래시 명령어 등록 완료!');
+  } catch (err) {
+    console.error('❌ 슬래시 명령어 등록 중 오류:', err);
+  }
+}
+
+// 봇이 켜졌을 때 한 번 실행
+client.once('ready', async () => {
+  console.log(`🤖 ${client.user.tag} 로 로그인 완료! 봇이 온라인 상태입니다.`);
+  await registerSlashCommands();
+});
+
+// 티켓 양식 메시지 자동 감지 (구매로그.js의 handleTicketFormMessage 기능)
+client.on('messageCreate', async (message) => {
+  const purchaseLogCommand = client.commands.get('구매로그');
+  if (purchaseLogCommand?.handleTicketFormMessage) {
+    try {
+      await purchaseLogCommand.handleTicketFormMessage(message);
+    } catch (err) {
+      console.error('티켓 양식 메시지 처리 중 오류:', err);
+    }
+  }
+});
+
+// 슬래시 명령어 실행 + 버튼/모달/선택메뉴 상호작용 처리
+client.on('interactionCreate', async (interaction) => {
+  // 1) 슬래시 명령어 실행
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) {
+      console.warn(`알 수 없는 명령어: ${interaction.commandName}`);
+      return;
+    }
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      console.error(`명령어 실행 중 오류 (${interaction.commandName}):`, err);
+      const errorReply = { content: '⚠️ 명령어 실행 중 오류가 발생했어요.', ephemeral: true };
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(errorReply).catch(() => {});
+      } else {
+        await interaction.reply(errorReply).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  // 2) 버튼 클릭 / 모달 제출 / 선택메뉴 선택
+  //    (닉네임 재입력, 구매로그 자동작성 버튼, 구매자 지정 모달, 패스 타입 선택메뉴 전부 포함)
+  const isRelevantComponent =
+    interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu();
+
+  if (isRelevantComponent) {
+    const relevantPrefixes = ['retry_nick', 'submit_nick', 'autoform'];
+    const matches = relevantPrefixes.some(prefix => interaction.customId.startsWith(prefix));
+
+    if (matches) {
+      const purchaseLogCommand = client.commands.get('구매로그');
+      if (purchaseLogCommand?.handleComponent) {
+        try {
+          await purchaseLogCommand.handleComponent(interaction);
+        } catch (err) {
+          console.error('버튼/모달/선택메뉴 처리 중 오류:', err);
+        }
+      }
+    }
+  }
+});
+
+// 디스코드 토큰으로 실제 로그인 (봇 켜기)
+if (!process.env.DISCORD_TOKEN) {
+  console.error('❌ .env 파일에 DISCORD_TOKEN이 없어요. .env.example을 참고해서 .env 파일을 만들어주세요.');
+  process.exit(1);
+}
+
+client.login(process.env.DISCORD_TOKEN);
