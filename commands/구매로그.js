@@ -68,59 +68,58 @@ function calculatePrice(robux) {
 // ---------------------------------------------------------------------------
 // Ticket Tool 양식 파싱
 //
-// Ticket Tool은 fields를 쓰지 않고, 모든 질문/답변을 embed.description 안에
-// 줄글(보통 "질문\n답변" 형태, 줄바꿈으로 구분)로 통째로 넣습니다.
-// 그래서 fields가 아니라 description 텍스트를 줄 단위로 읽어서
-// "라벨" 다음에 오는 줄(또는 같은 줄의 나머지 텍스트)을 값으로 추출합니다.
+// Ticket Tool은 fields를 쓰지 않고, 실제로는 아래와 같은 정확한 마크다운 형태로
+// embed.description에 질문/답변을 통째로 넣습니다 (실제 로그로 확인된 형태):
 //
-// 라벨은 양식 작성 시점의 정확한 표기와 살짝 다를 수 있어 유연하게 매칭합니다.
+//   **로벅스 구매 수량** ```
+//   1828```
+//   **로블록스 닉네임** ```
+//   snsndn```
+//   **구매하실 게임** ```
+//   누눙```
+//   **구매하실 게임패스** ```
+//   누융```
+//
+// 즉 "**라벨**" 다음에 코드블록(```)이 오고, 그 안에 값이 들어있는 구조입니다.
+// 줄바꿈 위치가 라벨/코드블록 경계와 항상 일치하지 않을 수 있어서
+// 줄 단위 파싱 대신 정규식으로 "**라벨** ```...```" 패턴을 직접 매칭합니다.
 // ---------------------------------------------------------------------------
 
 const LABELS = {
   robux: ['로벅스 구매 수량', '구매 수량', '로벅스 수량'],
   nickname: ['로블록스 닉네임', '닉네임'],
   // "구매하실 게임"과 "구매하실 게임패스"를 구분해야 하므로
-  // game은 뒤에 "패스"가 붙지 않는 경우만 매칭
-  game: ['구매하실 게임패스', '구매하실 게임', '게임패스', '게임 이름', '게임'],
+  // game은 "게임패스"가 붙은 라벨보다 먼저 매칭되지 않도록 순서/검증에 주의
+  game: ['구매하실 게임', '게임 이름', '게임'],
 };
 
-// description 전체 텍스트에서 각 라벨에 대응하는 값을 추출
-function extractValue(lines, labelCandidates) {
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-    for (const label of labelCandidates) {
-      if (!line.includes(label)) continue;
+// 전체 텍스트(여러 임베드의 description을 합친 것)에서
+// "**라벨** ```값```" 패턴을 찾아 값만 추출
+// negativeLookaheadAfter: 라벨 뒤에 이 문자열이 곧바로 이어지면 매칭하지 않음
+// (예: "구매하실 게임" 라벨이 "구매하실 게임패스"의 일부로 잘못 매칭되는 것을 방지)
+function extractValue(fullText, labelCandidates, negativeLookaheadAfter = []) {
+  for (const label of labelCandidates) {
+    const negativeLookahead = negativeLookaheadAfter
+      .map(s => `(?!${escapeRegex(s)})`)
+      .join('');
 
-      // 같은 줄에 "라벨: 값" 또는 "라벨 값" 형태로 값이 같이 있는 경우
-      const afterLabel = line.slice(line.indexOf(label) + label.length).trim();
-      const cleanedSameLine = afterLabel.replace(/^[:\-—>\s]+/, '').trim();
+    // **라벨[lookahead]** 다음에 (공백/줄바꿈 후) ```로 시작하는 코드블록, 그 안의 내용을 캡처
+    const pattern = new RegExp(
+      `\\*\\*\\s*${escapeRegex(label)}${negativeLookahead}\\s*\\*\\*\\s*` + '```([\\s\\S]*?)```',
+      'g'
+    );
 
-      if (cleanedSameLine) {
-        return cleanedSameLine;
-      }
-
-      // 같은 줄에 값이 없으면, 그 다음 비어있지 않은 줄을 값으로 사용
-      for (let j = i + 1; j < lines.length; j++) {
-        const next = lines[j].trim();
-        if (next) return next;
-      }
+    const match = pattern.exec(fullText);
+    if (match) {
+      const value = match[1].trim();
+      if (value) return value;
     }
   }
   return null;
-}
-
-// 임베드 description들을 모두 합쳐서 줄 단위로 분리
-function getAllLines(message) {
-  const lines = [];
-  for (const embed of message.embeds) {
-    if (!embed.description) continue;
-    // Ticket Tool은 \n으로 줄을 구분하지만 혹시 \r\n인 경우도 대비
-    const embedLines = embed.description.split(/\r?\n/);
-    lines.push(...embedLines);
-  }
-  return lines;
 }
 
 // Ticket Tool 양식 메시지(임베드)에서 닉네임/게임/로벅스 수량을 추출
@@ -128,16 +127,22 @@ function getAllLines(message) {
 function parseTicketForm(message) {
   if (message.embeds.length === 0) return null;
 
-  const lines = getAllLines(message);
-  if (lines.length === 0) return null;
+  // 모든 임베드의 description을 하나로 합쳐서 검색 (안내 임베드 + 양식 임베드가 분리되어 있을 수 있음)
+  const fullText = message.embeds
+    .map(embed => embed.description || '')
+    .join('\n');
 
-  const robuxText = extractValue(lines, LABELS.robux);
-  const nickname = extractValue(lines, LABELS.nickname);
-  const game = extractValue(lines, LABELS.game);
+  if (!fullText.trim()) return null;
+
+  const robuxText = extractValue(fullText, LABELS.robux);
+  const nickname = extractValue(fullText, LABELS.nickname);
+  // "구매하실 게임" 라벨이 "구매하실 게임패스"의 일부로 잘못 매칭되지 않도록
+  // "게임" 뒤에 곧바로 "패스"가 오지 않는 경우만 매칭
+  const game = extractValue(fullText, LABELS.game, ['패스']);
 
   if (!robuxText || !nickname || !game) return null;
 
-  // "1440" 같은 숫자 텍스트만 추출 (쉼표 포함 가능)
+  // "1828" 같은 숫자 텍스트만 추출 (쉼표 포함 가능)
   const robuxMatch = robuxText.match(/[\d,]+/);
   if (!robuxMatch) return null;
   const robux = Number(robuxMatch[0].replace(/,/g, ''));
