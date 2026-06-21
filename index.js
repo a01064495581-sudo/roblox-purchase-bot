@@ -6,7 +6,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = require('discord.js');
 const { checkBumpMessage } = require('./commands/bump-reminder.js');
-const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/계좌가격.js');
+const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/account-price.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
 // 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
