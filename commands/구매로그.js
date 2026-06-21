@@ -1,157 +1,578 @@
-// 봇을 실행하는 메인 파일입니다. Render는 이 파일을 실행해서 봇을 켭니다.
+const {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ChannelType,
+  StringSelectMenuBuilder,
+} = require('discord.js');
 
-require('dotenv').config();
-const fs = require('node:fs');
-const path = require('node:path');
-const http = require('node:http');
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
-const { checkBumpMessage } = require('./commands/bump-reminder.js');
-
-// Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
-// 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is running');
-}).listen(PORT, () => {
-  console.log(`🌐 더미 웹서버가 포트 ${PORT}에서 실행 중입니다. (Render 포트 감지용)`);
-});
-
-// Render 무료 플랜은 15분간 외부 요청이 없으면 슬립 모드로 들어갑니다.
-// 14분마다 우리 서비스 자신에게 HTTP 요청을 보내서 슬립을 방지합니다.
-// RENDER_EXTERNAL_URL은 Render가 자동으로 제공하는 이 서비스의 공개 URL 환경변수입니다.
-const SELF_PING_INTERVAL_MS = 14 * 60 * 1000;
-if (process.env.RENDER_EXTERNAL_URL) {
-  setInterval(() => {
-    http.get(process.env.RENDER_EXTERNAL_URL, (res) => {
-      console.log(`🏓 self-ping 완료 (status: ${res.statusCode})`);
-    }).on('error', (err) => {
-      console.error('❌ self-ping 실패:', err.message);
+// 닉네임으로 정확히 일치하는 로블록스 유저 정보(ID) 조회
+async function getRobloxUser(username) {
+  try {
+    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        usernames: [username],
+        excludeBannedUsers: false,
+      }),
     });
-  }, SELF_PING_INTERVAL_MS);
-} else {
-  console.warn('⚠️ RENDER_EXTERNAL_URL이 없어서 self-ping을 설정하지 못했어요. (로컬 환경이거나 Render 외부에서 실행 중일 수 있어요)');
-}
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-  ],
-});
-
-// commands 폴더 안의 모든 명령어 파일을 자동으로 읽어서 등록
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-const commandData = [];
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-    commandData.push(command.data.toJSON());
-    console.log(`✅ 명령어 로드됨: ${command.data.name}`);
-  } else {
-    console.warn(`⚠️ ${file} 파일에 data 또는 execute가 없어서 건너뜁니다.`);
+    const data = await res.json();
+    if (!data.data || data.data.length === 0) return null;
+    return data.data[0]; // { id, name, displayName, ... }
+  } catch (err) {
+    console.error('로블록스 유저 조회 실패:', err);
+    return null;
   }
 }
 
-// 봇이 켜질 때마다 슬래시 명령어를 디스코드에 자동으로 등록
-// (Shell 없이도 명령어가 항상 최신 상태로 유지되도록)
-async function registerSlashCommands() {
-  if (!process.env.CLIENT_ID) {
-    console.warn('⚠️ CLIENT_ID가 없어서 슬래시 명령어를 등록하지 못했어요.');
-    return;
-  }
+// 유저ID로 프로필(헤드샷) 이미지 URL 조회
+async function getRobloxAvatar(userId) {
   try {
-    const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-    console.log(`🔄 ${commandData.length}개의 슬래시 명령어를 등록하는 중...`);
-    await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commandData },
+    const res = await fetch(
+      `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=180x180&format=Png&isCircular=false`
     );
-    console.log('✅ 슬래시 명령어 등록 완료!');
+    const data = await res.json();
+    if (!data.data || data.data.length === 0) return null;
+    return data.data[0].imageUrl;
   } catch (err) {
-    console.error('❌ 슬래시 명령어 등록 중 오류:', err);
+    console.error('로블록스 아바타 조회 실패:', err);
+    return null;
   }
 }
 
-// 봇이 켜졌을 때 한 번 실행
-client.once('ready', async () => {
-  console.log(`🤖 ${client.user.tag} 로 로그인 완료! 봇이 온라인 상태입니다.`);
-  await registerSlashCommands();
-});
+// 자동 버튼으로 구매로그 작성 시 사용할 고정 로그 채널 ID
+const FIXED_LOG_CHANNEL_ID = '1517798871781085264';
 
-// 슬래시 명령어 실행 + 버튼/모달 상호작용 처리
-client.on('interactionCreate', async (interaction) => {
-  // 1) 슬래시 명령어 실행
-  if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    if (!command) {
-      console.warn(`알 수 없는 명령어: ${interaction.commandName}`);
-      return;
+function generatePurchaseId() {
+  // 이미지 예시(1413037862911344640)처럼 19자리 숫자 생성
+  let id = String(Math.floor(Math.random() * 9) + 1); // 첫자리는 0 아님
+  for (let i = 0; i < 18; i++) {
+    id += Math.floor(Math.random() * 10);
+  }
+  return id;
+}
+
+// 1만원당 1400로벅스 기준 가격 자동 계산
+function calculatePrice(robux) {
+  const won = Math.round(robux * (10000 / 1400));
+  return `${won.toLocaleString()}원`;
+}
+
+// ---------------------------------------------------------------------------
+// Ticket Tool 양식 파싱
+//
+// Ticket Tool은 fields를 쓰지 않고, 실제로는 아래와 같은 정확한 마크다운 형태로
+// embed.description에 질문/답변을 통째로 넣습니다 (실제 로그로 확인된 형태):
+//
+//   **로벅스 구매 수량** ```
+//   1828```
+//   **로블록스 닉네임** ```
+//   snsndn```
+//   **구매하실 게임** ```
+//   누눙```
+//   **구매하실 게임패스** ```
+//   누융```
+//
+// 즉 "**라벨**" 다음에 코드블록(```)이 오고, 그 안에 값이 들어있는 구조입니다.
+// 줄바꿈 위치가 라벨/코드블록 경계와 항상 일치하지 않을 수 있어서
+// 줄 단위 파싱 대신 정규식으로 "**라벨** ```...```" 패턴을 직접 매칭합니다.
+// ---------------------------------------------------------------------------
+
+const LABELS = {
+  robux: ['로벅스 구매 수량', '구매 수량', '로벅스 수량'],
+  nickname: ['로블록스 닉네임', '닉네임'],
+  // "구매하실 게임"과 "구매하실 게임패스"를 구분해야 하므로
+  // game은 "게임패스"가 붙은 라벨보다 먼저 매칭되지 않도록 순서/검증에 주의
+  game: ['구매하실 게임', '게임 이름', '게임'],
+};
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 전체 텍스트(여러 임베드의 description을 합친 것)에서
+// "**라벨** ```값```" 패턴을 찾아 값만 추출
+// negativeLookaheadAfter: 라벨 뒤에 이 문자열이 곧바로 이어지면 매칭하지 않음
+// (예: "구매하실 게임" 라벨이 "구매하실 게임패스"의 일부로 잘못 매칭되는 것을 방지)
+function extractValue(fullText, labelCandidates, negativeLookaheadAfter = []) {
+  for (const label of labelCandidates) {
+    const negativeLookahead = negativeLookaheadAfter
+      .map(s => `(?!${escapeRegex(s)})`)
+      .join('');
+
+    // **라벨[lookahead]** 다음에 (공백/줄바꿈 후) ```로 시작하는 코드블록, 그 안의 내용을 캡처
+    const pattern = new RegExp(
+      `\\*\\*\\s*${escapeRegex(label)}${negativeLookahead}\\s*\\*\\*\\s*` + '```([\\s\\S]*?)```',
+      'g'
+    );
+
+    const match = pattern.exec(fullText);
+    if (match) {
+      const value = match[1].trim();
+      if (value) return value;
     }
-    try {
-      await command.execute(interaction);
-    } catch (err) {
-      console.error(`명령어 실행 중 오류 (${interaction.commandName}):`, err);
-      const errorReply = { content: '⚠️ 명령어 실행 중 오류가 발생했어요.', ephemeral: true };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(errorReply).catch(() => {});
+  }
+  return null;
+}
+
+// Ticket Tool 양식 메시지(임베드)에서 닉네임/게임/로벅스 수량을 추출
+// description 텍스트 기반 파싱 (fields는 비어있는 경우가 대부분이라 사용하지 않음)
+function parseTicketForm(message) {
+  if (message.embeds.length === 0) return null;
+
+  // 모든 임베드의 description을 하나로 합쳐서 검색 (안내 임베드 + 양식 임베드가 분리되어 있을 수 있음)
+  const fullText = message.embeds
+    .map(embed => embed.description || '')
+    .join('\n');
+
+  if (!fullText.trim()) return null;
+
+  const robuxText = extractValue(fullText, LABELS.robux);
+  const nickname = extractValue(fullText, LABELS.nickname);
+  // "구매하실 게임" 라벨이 "구매하실 게임패스"의 일부로 잘못 매칭되지 않도록
+  // "게임" 뒤에 곧바로 "패스"가 오지 않는 경우만 매칭
+  const game = extractValue(fullText, LABELS.game, ['패스']);
+
+  if (!robuxText || !nickname || !game) return null;
+
+  // "1828" 같은 숫자 텍스트만 추출 (쉼표 포함 가능)
+  const robuxMatch = robuxText.match(/[\d,]+/);
+  if (!robuxMatch) return null;
+  const robux = Number(robuxMatch[0].replace(/,/g, ''));
+
+  if (!robux || Number.isNaN(robux)) return null;
+
+  return { nickname, game, robux };
+}
+
+// 닉네임을 제외한 나머지 정보로 구매 임베드를 만드는 공용 함수
+// (최초 실행 / 버튼 재입력 후 모두 재사용)
+async function buildPurchaseResult({ buyer, nickname, passType, game, robux, price }) {
+  const purchaseId = generatePurchaseId();
+  const robloxUser = await getRobloxUser(nickname);
+
+  let robloxProfileUrl;
+  let avatarUrl = null;
+  let notFound = false;
+
+  if (robloxUser) {
+    robloxProfileUrl = `https://www.roblox.com/users/${robloxUser.id}/profile`;
+    avatarUrl = await getRobloxAvatar(robloxUser.id);
+  } else {
+    notFound = true;
+    robloxProfileUrl = `https://www.roblox.com/search/users?keyword=${encodeURIComponent(nickname)}`;
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(notFound ? 0xE67E22 : 0x2ECC71)
+    .setTitle('구매 완료')
+    .setDescription('로벅스를 구매해주셔서 감사합니다!')
+    .addFields(
+      { name: '구매자', value: `${buyer}\n${buyer.username}`, inline: false },
+      {
+        name: '로블록스',
+        value: notFound
+          ? `[${nickname}](${robloxProfileUrl}) ⚠️ 정확히 일치하는 유저를 찾지 못했어요`
+          : `[${nickname}](${robloxProfileUrl})`,
+        inline: false,
+      },
+      { name: '패스 타입', value: passType, inline: false },
+      { name: '게임', value: game, inline: false },
+      { name: '🔶 구매 정보', value: `로벅스: ${robux.toLocaleString()} 로벅스\n가격: ${price}`, inline: false },
+    )
+    .setFooter({ text: `구매 ID: ${purchaseId} | ${new Date().toLocaleString('ko-KR')}` })
+    .setTimestamp();
+
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+
+  return { embed, notFound };
+}
+
+// 재입력 버튼에 현재 정보를 실어 보내기 위한 직렬화/역직렬화
+// customId 길이 제한(100자) 때문에 닉네임을 뺀 나머지만 압축해서 담음
+// game 이름에 구분자(::)가 포함될 가능성은 낮지만 안전하게 escape 처리
+const SEP = '::';
+const CUSTOM_ID_LIMIT = 100;
+
+function encodeState({ buyerId, passType, game, robux, price }) {
+  const safeGame = game.replaceAll(SEP, '/');
+  const safePrice = price.replaceAll(SEP, '/');
+  let encoded = `retry_nick${SEP}${buyerId}${SEP}${passType}${SEP}${safeGame}${SEP}${robux}${SEP}${safePrice}`;
+
+  // 100자를 넘으면 게임/가격 텍스트를 줄여서 절대 길이 제한을 넘지 않도록 함
+  if (encoded.length > CUSTOM_ID_LIMIT) {
+    const overflow = encoded.length - CUSTOM_ID_LIMIT;
+    const trimmedGame = safeGame.slice(0, Math.max(1, safeGame.length - overflow - 3)) + '...';
+    encoded = `retry_nick${SEP}${buyerId}${SEP}${passType}${SEP}${trimmedGame}${SEP}${robux}${SEP}${safePrice}`;
+  }
+
+  return encoded;
+}
+
+function decodeState(customId) {
+  const [, buyerId, passType, game, robux, price] = customId.split(SEP);
+  return { buyerId, passType, game, robux: Number(robux), price };
+}
+
+// 티켓 양식 자동 인식 버튼/선택메뉴용 상태 인코딩
+// "autoform" 접두사로 위 retry_nick 계열과 구분
+const AUTOFORM_SEP = '||';
+function encodeFormState({ messageId, buyerId, nickname, game, robux }) {
+  const safeGame = game.replaceAll(AUTOFORM_SEP, '/');
+  const safeNickname = nickname.replaceAll(AUTOFORM_SEP, '');
+  let encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${safeGame}${AUTOFORM_SEP}${robux}`;
+
+  // customId 100자 제한 보호
+  if (encoded.length > CUSTOM_ID_LIMIT) {
+    const overflow = encoded.length - CUSTOM_ID_LIMIT;
+    const trimmedGame = safeGame.slice(0, Math.max(1, safeGame.length - overflow - 3)) + '...';
+    encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${trimmedGame}${AUTOFORM_SEP}${robux}`;
+  }
+  return encoded;
+}
+
+function decodeFormState(customId) {
+  const [, messageId, buyerId, nickname, game, robux] = customId.split(AUTOFORM_SEP);
+  return { messageId, buyerId, nickname, game, robux: Number(robux) };
+}
+
+module.exports = {
+  // index.js의 messageCreate 이벤트에서 호출 - Ticket Tool 양식 메시지를 감지해서 버튼을 자동으로 답니다.
+  async handleTicketFormMessage(message) {
+    // 봇이 보낸 메시지만 확인 (Ticket Tool도 봇이라 isBot이 true)
+    if (!message.author.bot) return;
+    if (message.embeds.length === 0) return;
+
+    // 디버그: 임베드 구조를 그대로 콘솔에 출력해서 실제 필드명/형태를 확인
+    console.log('🔍 [디버그] 봇 메시지 감지:', message.author.tag);
+    console.log('🔍 [디버그] 임베드 개수:', message.embeds.length);
+    message.embeds.forEach((embed, i) => {
+      console.log(`🔍 [디버그] 임베드 ${i} - title:`, embed.title);
+      console.log(`🔍 [디버그] 임베드 ${i} - description:`, embed.description);
+      console.log(`🔍 [디버그] 임베드 ${i} - fields:`, JSON.stringify(embed.fields, null, 2));
+    });
+
+    const parsed = parseTicketForm(message);
+    console.log('🔍 [디버그] 파싱 결과:', parsed);
+    if (!parsed) {
+      console.log('🔍 [디버그] 파싱 실패로 버튼을 달지 않고 종료합니다.');
+      return; // 우리가 아는 양식이 아니면 무시
+    }
+
+    // 티켓을 연 사람(구매자) 찾기: 안내 임베드 본문에 멘션된 첫 유저로 추정
+    // 멘션이 안 잡히면 버튼 누른 관리자가 직접 고르게 함
+    const mentionedUser = message.mentions.users.first() || null;
+
+    const button = new ButtonBuilder()
+      .setCustomId(encodeFormState({
+        messageId: message.id,
+        buyerId: mentionedUser?.id || '',
+        nickname: parsed.nickname,
+        game: parsed.game,
+        robux: parsed.robux,
+      }))
+      .setLabel('📋 구매로그 작성')
+      .setStyle(ButtonStyle.Success);
+
+    await message.reply({
+      content: '아래 버튼을 눌러서 이 정보로 구매로그를 자동 작성할 수 있어요.',
+      components: [new ActionRowBuilder().addComponents(button)],
+    });
+  },
+
+  data: new SlashCommandBuilder()
+    .setName('구매로그')
+    .setDescription('로벅스 구매 로그를 티켓에 기록합니다')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) // 관리자만 사용 가능
+    .addUserOption(option =>
+      option.setName('구매자')
+        .setDescription('구매한 사람을 멘션하세요')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('닉네임')
+        .setDescription('로블록스 닉네임')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('패스타입')
+        .setDescription('구매 타입을 선택하세요')
+        .setRequired(true)
+        .addChoices(
+          { name: '인게임 선물', value: '인게임 선물' },
+          { name: '로벅스 송금', value: '로벅스 송금' },
+          { name: '게임패스 구매', value: '게임패스 구매' },
+        ))
+    .addStringOption(option =>
+      option.setName('게임')
+        .setDescription('구매한 게임 이름 (로벅스 송금인 경우 "해당없음" 등으로 입력)')
+        .setRequired(true))
+    .addIntegerOption(option =>
+      option.setName('로벅스')
+        .setDescription('구매한 로벅스 수량')
+        .setRequired(true))
+    .addStringOption(option =>
+      option.setName('가격')
+        .setDescription('가격 (예: 700원)')
+        .setRequired(true))
+    .addChannelOption(option =>
+      option.setName('로그채널')
+        .setDescription('구매로그 임베드를 올릴 채널을 선택하세요')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(true)),
+
+  async execute(interaction) {
+    // 이중 안전장치: setDefaultMemberPermissions는 서버 관리자가 바꿀 수 있는 "기본값"일 뿐이라
+    // 실행 시점에도 관리자 권한을 한 번 더 확인합니다.
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
+        ephemeral: true,
+      });
+    }
+
+    await interaction.deferReply({ ephemeral: true }); // 티켓 채널에는 본인에게만 보이는 처리중 표시
+
+    const buyer = interaction.options.getUser('구매자');
+    const nickname = interaction.options.getString('닉네임');
+    const passType = interaction.options.getString('패스타입');
+    const game = interaction.options.getString('게임');
+    const robux = interaction.options.getInteger('로벅스');
+    const price = interaction.options.getString('가격');
+    const logChannel = interaction.options.getChannel('로그채널');
+
+    // 로그 채널에 봇이 메시지를 보낼 권한이 있는지 미리 확인
+    const botMember = interaction.guild.members.me;
+    const channelPerms = logChannel.permissionsFor(botMember);
+    if (!channelPerms?.has(PermissionFlagsBits.ViewChannel) || !channelPerms?.has(PermissionFlagsBits.SendMessages)) {
+      return interaction.editReply({
+        content: `🚫 ${logChannel}에 메시지를 보낼 권한이 없어요. 채널 권한을 확인해주세요.`,
+      });
+    }
+
+    const { embed, notFound } = await buildPurchaseResult({ buyer, nickname, passType, game, robux, price });
+
+    const payload = { embeds: [embed] };
+
+    if (notFound) {
+      const retryButton = new ButtonBuilder()
+        .setCustomId(encodeState({ buyerId: buyer.id, passType, game, robux, price }))
+        .setLabel('닉네임 다시 입력')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🔁');
+
+      payload.components = [new ActionRowBuilder().addComponents(retryButton)];
+    }
+
+    // 실제 구매로그 임베드는 선택한 로그 채널에 전송 (모두에게 보임)
+    await logChannel.send(payload);
+
+    // 티켓 채널(명령어 실행 위치)에는 본인에게만 보이는 간단한 확인 메시지만 표시
+    await interaction.editReply({
+      content: `✅ 로그 등록됨 → ${logChannel}`,
+    });
+  },
+
+  // 버튼/모달 상호작용 처리 (index.js의 interactionCreate 핸들러에서 호출해주세요)
+  async handleComponent(interaction) {
+    // 1) "닉네임 다시 입력" 버튼 클릭 -> 모달 띄우기
+    if (interaction.isButton() && interaction.customId.startsWith('retry_nick')) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({
+          content: '🚫 이 작업은 관리자 권한을 가진 멤버만 할 수 있어요.',
+          ephemeral: true,
+        });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId(interaction.customId.replace('retry_nick', 'submit_nick'))
+        .setTitle('로블록스 닉네임 다시 입력');
+
+      const nicknameInput = new TextInputBuilder()
+        .setCustomId('nickname_input')
+        .setLabel('정확한 로블록스 닉네임을 입력하세요')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(nicknameInput));
+      return interaction.showModal(modal);
+    }
+
+    // 2) 모달 제출 -> 닉네임으로 다시 조회해서 임베드 갱신
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('submit_nick')) {
+      await interaction.deferUpdate();
+
+      const state = decodeState(interaction.customId.replace('submit_nick', 'retry_nick'));
+      const newNickname = interaction.fields.getTextInputValue('nickname_input');
+      const buyer = await interaction.client.users.fetch(state.buyerId);
+
+      const { embed, notFound } = await buildPurchaseResult({
+        buyer,
+        nickname: newNickname,
+        passType: state.passType,
+        game: state.game,
+        robux: state.robux,
+        price: state.price,
+      });
+
+      const payload = { embeds: [embed] };
+
+      if (notFound) {
+        const retryButton = new ButtonBuilder()
+          .setCustomId(encodeState({ buyerId: state.buyerId, passType: state.passType, game: state.game, robux: state.robux, price: state.price }))
+          .setLabel('닉네임 다시 입력')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('🔁');
+        payload.components = [new ActionRowBuilder().addComponents(retryButton)];
       } else {
-        await interaction.reply(errorReply).catch(() => {});
+        payload.components = []; // 찾았으면 버튼 제거
       }
-    }
-    return;
-  }
 
-  // 2) 버튼 클릭 또는 모달 제출 (구매로그 봇의 "닉네임 다시 입력" 기능)
-  if (interaction.isButton() || interaction.isModalSubmit()) {
-    if (
-      interaction.customId.startsWith('retry_nick') ||
-      interaction.customId.startsWith('submit_nick')
-    ) {
-      const purchaseLogCommand = client.commands.get('구매로그');
-      if (purchaseLogCommand?.handleComponent) {
-        try {
-          await purchaseLogCommand.handleComponent(interaction);
-        } catch (err) {
-          console.error('버튼/모달 처리 중 오류:', err);
-        }
+      await interaction.editReply(payload);
+    }
+
+    // 3) "📋 구매로그 작성" 버튼 클릭 -> 구매자가 자동으로 잡혔으면 패스 타입 선택 메뉴,
+    //    못 잡았으면 먼저 구매자를 입력받는 모달
+    if (interaction.isButton() && interaction.customId.startsWith('autoform')) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({
+          content: '🚫 이 작업은 관리자 권한을 가진 멤버만 할 수 있어요.',
+          ephemeral: true,
+        });
       }
+
+      const state = decodeFormState(interaction.customId);
+
+      if (!state.buyerId) {
+        // 구매자를 자동으로 못 찾은 경우: 멘션을 텍스트로 입력받는 모달
+        const modal = new ModalBuilder()
+          .setCustomId(interaction.customId.replace('autoform', 'autoform_buyer'))
+          .setTitle('구매자 지정');
+
+        const buyerInput = new TextInputBuilder()
+          .setCustomId('buyer_id_input')
+          .setLabel('구매자의 디스코드 ID를 입력하세요')
+          .setPlaceholder('유저 우클릭 > ID 복사')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(buyerInput));
+        return interaction.showModal(modal);
+      }
+
+      // 구매자가 이미 있으면 바로 패스 타입 선택 메뉴 표시
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(interaction.customId.replace('autoform', 'autoform_pass'))
+        .setPlaceholder('패스 타입을 선택하세요')
+        .addOptions(
+          { label: '인게임 선물', value: '인게임 선물' },
+          { label: '로벅스 송금', value: '로벅스 송금' },
+          { label: '게임패스 구매', value: '게임패스 구매' },
+        );
+
+      return interaction.reply({
+        content: '패스 타입을 선택해주세요.',
+        components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral: true,
+      });
     }
-  }
-});
 
-// 일반 메시지 감지
-// 1) /bump 리마인더 체크
-// 2) Ticket Tool 양식 메시지 감지 -> "구매로그 작성" 버튼 자동 부착
-client.on('messageCreate', async (message) => {
-  try {
-    await checkBumpMessage(message);
-  } catch (err) {
-    console.error('bump 리마인더 처리 중 오류:', err);
-  }
+    // 4) 구매자 ID 모달 제출 -> 패스 타입 선택 메뉴로 이어감
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('autoform_buyer')) {
+      const state = decodeFormState(interaction.customId.replace('autoform_buyer', 'autoform'));
+      const buyerIdRaw = interaction.fields.getTextInputValue('buyer_id_input').replace(/[<@!>]/g, '').trim();
 
-  try {
-    const purchaseLogCommand = client.commands.get('구매로그');
-    if (purchaseLogCommand?.handleTicketFormMessage) {
-      await purchaseLogCommand.handleTicketFormMessage(message);
+      let buyer;
+      try {
+        buyer = await interaction.client.users.fetch(buyerIdRaw);
+      } catch {
+        return interaction.reply({
+          content: '🚫 입력한 ID로 유저를 찾지 못했어요. 디스코드 ID가 맞는지 확인해주세요.',
+          ephemeral: true,
+        });
+      }
+
+      const newCustomId = encodeFormState({
+        messageId: state.messageId,
+        buyerId: buyer.id,
+        nickname: state.nickname,
+        game: state.game,
+        robux: state.robux,
+      });
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(newCustomId.replace('autoform', 'autoform_pass'))
+        .setPlaceholder('패스 타입을 선택하세요')
+        .addOptions(
+          { label: '인게임 선물', value: '인게임 선물' },
+          { label: '로벅스 송금', value: '로벅스 송금' },
+          { label: '게임패스 구매', value: '게임패스 구매' },
+        );
+
+      return interaction.reply({
+        content: `구매자: ${buyer} — 패스 타입을 선택해주세요.`,
+        components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral: true,
+      });
     }
-  } catch (err) {
-    console.error('티켓 양식 감지 처리 중 오류:', err);
-  }
-});
 
-// 디스코드 토큰으로 실제 로그인 (봇 켜기)
-if (!process.env.DISCORD_TOKEN) {
-  console.error('❌ .env 파일에 DISCORD_TOKEN이 없어요.');
-  process.exit(1);
-}
+    // 5) 패스 타입 선택 완료 -> 가격 자동 계산 후 고정 로그 채널에 최종 임베드 전송
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('autoform_pass')) {
+      await interaction.deferUpdate();
 
-client.login(process.env.DISCORD_TOKEN);
+      const state = decodeFormState(interaction.customId.replace('autoform_pass', 'autoform'));
+      const passType = interaction.values[0];
+      const buyer = await interaction.client.users.fetch(state.buyerId);
+      const price = calculatePrice(state.robux);
+
+      const logChannel = await interaction.client.channels.fetch(FIXED_LOG_CHANNEL_ID).catch(() => null);
+      if (!logChannel) {
+        return interaction.editReply({
+          content: '🚫 고정 로그 채널을 찾지 못했어요. 코드에 설정된 채널 ID를 확인해주세요.',
+          components: [],
+        });
+      }
+
+      const botMember = interaction.guild.members.me;
+      const channelPerms = logChannel.permissionsFor(botMember);
+      if (!channelPerms?.has(PermissionFlagsBits.ViewChannel) || !channelPerms?.has(PermissionFlagsBits.SendMessages)) {
+        return interaction.editReply({
+          content: `🚫 ${logChannel}에 메시지를 보낼 권한이 없어요.`,
+          components: [],
+        });
+      }
+
+      const { embed, notFound } = await buildPurchaseResult({
+        buyer,
+        nickname: state.nickname,
+        passType,
+        game: state.game,
+        robux: state.robux,
+        price,
+      });
+
+      const payload = { embeds: [embed] };
+
+      if (notFound) {
+        const retryButton = new ButtonBuilder()
+          .setCustomId(encodeState({ buyerId: buyer.id, passType, game: state.game, robux: state.robux, price }))
+          .setLabel('닉네임 다시 입력')
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji('🔁');
+        payload.components = [new ActionRowBuilder().addComponents(retryButton)];
+      }
+
+      await logChannel.send(payload);
+
+      await interaction.editReply({
+        content: `✅ 로그 등록됨 → ${logChannel} (가격 자동계산: ${price})`,
+        components: [],
+      });
+    }
+  },
+};
