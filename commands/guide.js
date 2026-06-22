@@ -121,12 +121,14 @@ module.exports = {
       .setColor(0xF1C40F)
       .setTitle('구매 안내')
       .addFields(
-        { name: '구매 로벅스',      value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: true },
-        { name: '로블록스 닉네임',  value: parsed.nickname, inline: true },
-        { name: '\u200b',           value: '\u200b',         inline: false },
-        { name: '구매하실 게임',    value: parsed.game,     inline: true },
-        { name: '구매하실 게임패스', value: parsed.gamepass, inline: true },
-        { name: '\u200b',           value: '\u200b',         inline: false },
+        { name: '구매 로벅스',       value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: false },
+        { name: '\u200b',            value: '\u200b', inline: false },
+        { name: '로블록스 닉네임',   value: parsed.nickname, inline: false },
+        { name: '\u200b',            value: '\u200b', inline: false },
+        { name: '구매하실 게임',     value: parsed.game, inline: false },
+        { name: '\u200b',            value: '\u200b', inline: false },
+        { name: '구매하실 게임패스', value: parsed.gamepass, inline: false },
+        { name: '\u200b',            value: '\u200b', inline: false },
         {
           name: '입금 안내',
           value: `**${price}**을 아래 계좌로 입금해 주세요.\n\n${acc.bank} \`${acc.number}\` : **${acc.holder}**`,
