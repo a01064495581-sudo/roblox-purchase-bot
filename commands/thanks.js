@@ -25,5 +25,12 @@ module.exports = {
 " <a:emoji_380:1516614686148133018> <#1508378470273781820> <a:emoji_380:1516614686148133018>`;
 
     await interaction.reply({ content: message });
+
+    // 명령어를 사용한 채널 이름을 'ㅇㄹ'로 변경
+    try {
+      await interaction.channel.setName('ㅇㄹ', '/감사 명령어 실행으로 채널명 변경');
+    } catch (err) {
+      console.error('❌ 채널 이름 변경 실패:', err.message);
+    }
   },
 };
