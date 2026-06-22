@@ -23,6 +23,37 @@ function calculatePrice(robux) {
   return won.toLocaleString('ko-KR') + '원';
 }
 
+// 구매로그.js와 동일한 로블록스 API 함수
+async function getRobloxUser(username) {
+  try {
+    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: [username], excludeBannedUsers: false }),
+    });
+    const data = await res.json();
+    if (!data.data || data.data.length === 0) return null;
+    return data.data[0];
+  } catch (err) {
+    console.error('로블록스 유저 조회 실패:', err);
+    return null;
+  }
+}
+
+async function getRobloxAvatar(userId) {
+  try {
+    const res = await fetch(
+      `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=180x180&format=Png&isCircular=false`
+    );
+    const data = await res.json();
+    if (!data.data || data.data.length === 0) return null;
+    return data.data[0].imageUrl;
+  } catch (err) {
+    console.error('로블록스 아바타 조회 실패:', err);
+    return null;
+  }
+}
+
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -117,13 +148,28 @@ module.exports = {
     const acc    = ACCOUNTS[accIdx];
     const price  = calculatePrice(parsed.robux);
 
+    // 로블록스 프로필 조회
+    const robloxUser = await getRobloxUser(parsed.nickname);
+    let avatarUrl = null;
+    let robloxProfileUrl = null;
+
+    if (robloxUser) {
+      robloxProfileUrl = `https://www.roblox.com/users/${robloxUser.id}/profile`;
+      avatarUrl = await getRobloxAvatar(robloxUser.id);
+    }
+
+    // 닉네임 필드값: 프로필 링크 있으면 하이퍼링크로, 없으면 그냥 텍스트
+    const nicknameValue = robloxProfileUrl
+      ? `[${parsed.nickname}](${robloxProfileUrl})`
+      : parsed.nickname;
+
     const embed = new EmbedBuilder()
       .setColor(0xF1C40F)
       .setTitle('구매 안내')
       .addFields(
         { name: '구매 로벅스',       value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: false },
         { name: '\u200b',            value: '\u200b', inline: false },
-        { name: '로블록스 닉네임',   value: parsed.nickname, inline: false },
+        { name: '로블록스 닉네임',   value: nicknameValue, inline: false },
         { name: '\u200b',            value: '\u200b', inline: false },
         { name: '구매하실 게임',     value: parsed.game, inline: false },
         { name: '\u200b',            value: '\u200b', inline: false },
@@ -149,6 +195,9 @@ module.exports = {
       )
       .setImage(GIF_URL)
       .setTimestamp();
+
+    // 아바타 이미지 있으면 썸네일로 설정
+    if (avatarUrl) embed.setThumbnail(avatarUrl);
 
     await interaction.channel.send({ embeds: [embed] });
     await interaction.editReply({ content: '✅ 안내 임베드를 전송했어요!' });
