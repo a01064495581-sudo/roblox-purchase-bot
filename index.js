@@ -8,6 +8,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = requir
 const { startBumpReminder } = require('./commands/bump-reminder.js');
 const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/account-price.js');
 const { handleAutoReact } = require('./commands/auto-react.js');
+const deleteChannelsCommand = require('./commands/delete-channels.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
 // 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
@@ -144,6 +145,18 @@ client.on('interactionCreate', async (interaction) => {
         await handleInfoComponent(interaction);
       } catch (err) {
         console.error('계좌/가격 버튼 처리 중 오류:', err);
+      }
+    }
+
+    // 채널 삭제 확인/취소 버튼 처리 (delete-channels.js, 완전히 독립)
+    if (
+      interaction.customId === 'delete_channels_confirm' ||
+      interaction.customId === 'delete_channels_cancel'
+    ) {
+      try {
+        await deleteChannelsCommand.handleDeleteComponent(interaction);
+      } catch (err) {
+        console.error('채널 삭제 버튼 처리 중 오류:', err);
       }
     }
   }
