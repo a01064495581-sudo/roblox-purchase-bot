@@ -10,7 +10,7 @@ const {
 // GIF URL
 const GIF_URL = 'https://cdn.discordapp.com/attachments/1388285653640282246/1517608996230397982/1.gif?ex=6a3a32c4&is=6a38e144&hm=b199bc601081c42bbf42e04bcaec62e2b7cf64209c2b28ae5245768556716e8a&';
 
-// 계좌 정보 (account-price.js와 동일)
+// 계좌 정보
 const ACCOUNTS = [
   { name: '박양봉', bank: '토스뱅크', number: '1001-6192-9770', holder: '박제영' },
   { name: '김양봉', bank: '토스뱅크', number: '1002-1293-2074', holder: '김부성' },
@@ -23,7 +23,6 @@ function calculatePrice(robux) {
   return won.toLocaleString('ko-KR') + '원';
 }
 
-// 구매로그.js와 동일한 파싱 방식
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -57,10 +56,10 @@ function parseTicketFormFromChannel(messages) {
 
     if (!fullText.trim()) continue;
 
-    const robuxText  = extractValue(fullText, ['로벅스 구매 수량', '구매 수량', '로벅스 수량']);
-    const nickname   = extractValue(fullText, ['로블록스 닉네임', '닉네임']);
-    const game       = extractValue(fullText, ['구매하실 게임', '게임 이름', '게임'], ['패스']);
-    const gamepass   = extractValue(fullText, ['구매하실 게임패스', '게임패스']);
+    const robuxText = extractValue(fullText, ['로벅스 구매 수량', '구매 수량', '로벅스 수량']);
+    const nickname  = extractValue(fullText, ['로블록스 닉네임', '닉네임']);
+    const game      = extractValue(fullText, ['구매하실 게임', '게임 이름', '게임'], ['패스']);
+    const gamepass  = extractValue(fullText, ['구매하실 게임패스', '게임패스']);
 
     if (!robuxText || !nickname || !game || !gamepass) continue;
 
@@ -91,7 +90,6 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // 이중 관리자 권한 확인
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
@@ -101,7 +99,6 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
 
-    // 현재 채널에서 최근 메시지 읽어서 티켓 양식 파싱
     let messages;
     try {
       messages = await interaction.channel.messages.fetch({ limit: 20 });
@@ -122,24 +119,26 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0xF1C40F)
-      .setTitle('🛒 구매 안내')
+      .setTitle('구매 안내')
       .addFields(
-        { name: '🔶 구매 로벅스',      value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: true },
-        { name: '🎮 로블록스 닉네임',   value: parsed.nickname,  inline: true },
-        { name: '\u200b',              value: '\u200b',          inline: false },
-        { name: '🕹️ 구매하실 게임',    value: parsed.game,      inline: true },
-        { name: '🎫 구매하실 게임패스', value: parsed.gamepass,  inline: true },
-        { name: '\u200b',              value: '\u200b',          inline: false },
+        { name: '구매 로벅스',      value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: true },
+        { name: '로블록스 닉네임',  value: parsed.nickname, inline: true },
+        { name: '\u200b',           value: '\u200b',         inline: false },
+        { name: '구매하실 게임',    value: parsed.game,     inline: true },
+        { name: '구매하실 게임패스', value: parsed.gamepass, inline: true },
+        { name: '\u200b',           value: '\u200b',         inline: false },
         {
-          name: '💳 입금 안내',
+          name: '입금 안내',
           value: `**${price}**을 아래 계좌로 입금해 주세요.\n\n${acc.bank} \`${acc.number}\` : **${acc.holder}**`,
           inline: false,
         },
+        { name: '\u200b', value: '\u200b', inline: false },
         {
-          name: '🔐 이중창 인증 필수',
-          value: '아래 **이중창이 뭔가요?** 버튼을 확인하세요.',
+          name: '이중창 인증 필수',
+          value: '**이중창이 뭔가요?** <#1508377099847864402> 를 확인하세요.',
           inline: false,
         },
+        { name: '\u200b', value: '\u200b', inline: false },
         {
           name: '\u200b',
           value: '*(10,000원당 1,400로벅스 기준)*',
@@ -149,7 +148,6 @@ module.exports = {
       .setImage(GIF_URL)
       .setTimestamp();
 
-    // 안내 임베드는 채널에 공개로 전송
     await interaction.channel.send({ embeds: [embed] });
     await interaction.editReply({ content: '✅ 안내 임베드를 전송했어요!' });
   },
