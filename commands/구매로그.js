@@ -171,21 +171,27 @@ async function buildPurchaseResult({ buyer, nickname, passType, game, robux, pri
   }
 
   const embed = new EmbedBuilder()
-    .setColor(notFound ? 0xE67E22 : 0x2ECC71)
-    .setTitle('구매 완료')
+    .setColor(notFound ? 0xE67E22 : 0xF1C40F)
+    .setTitle('✅ 구매 완료')
     .setDescription('로벅스를 구매해주셔서 감사합니다!')
     .addFields(
-      { name: '구매자', value: `${buyer}\n${buyer.username}`, inline: false },
+      { name: '구매자', value: `${buyer}\n${buyer.username}`, inline: true },
       {
         name: '로블록스',
         value: notFound
           ? `[${nickname}](${robloxProfileUrl}) ⚠️ 정확히 일치하는 유저를 찾지 못했어요`
           : `[${nickname}](${robloxProfileUrl})`,
+        inline: true,
+      },
+      { name: '\u200b', value: '\u200b', inline: false },
+      { name: '패스 타입', value: passType, inline: true },
+      { name: '게임', value: game, inline: true },
+      { name: '\u200b', value: '\u200b', inline: false },
+      {
+        name: '🔶 구매 정보',
+        value: `**${robux.toLocaleString()} 로벅스** · **${price}**`,
         inline: false,
       },
-      { name: '패스 타입', value: passType, inline: false },
-      { name: '게임', value: game, inline: false },
-      { name: '🔶 구매 정보', value: `로벅스: ${robux.toLocaleString()} 로벅스\n가격: ${price}`, inline: false },
     )
     .setFooter({ text: `구매 ID: ${purchaseId} | ${new Date().toLocaleString('ko-KR')}` })
     .setTimestamp();
