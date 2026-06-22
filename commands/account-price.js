@@ -64,41 +64,8 @@ function calculatePrice(robux) {
 // (index.js의 handleTicketFormMessage 흐름과 별도로 동작)
 // ─────────────────────────────────────────
 async function handleTicketInfoButtons(message) {
-  // 봇 메시지이고 임베드가 있을 때만 처리
-  if (!message.author?.bot) return;
-  if (!message.embeds || message.embeds.length === 0) return;
-
-  // 로벅스 수량이 파싱되는 티켓 양식 메시지인지 확인
-  const robux = extractRobux(message);
-  if (!robux) return;
-
-  // 이미 계좌/가격 버튼이 달린 메시지가 있으면 중복 방지
-  // (같은 채널에서 봇이 보낸 최근 메시지 확인)
-  try {
-    const recent = await message.channel.messages.fetch({ limit: 10 });
-    const alreadySent = recent.some(m =>
-      m.author.id === message.client.user.id &&
-      m.components?.length > 0 &&
-      m.components[0]?.components?.some(c => c.customId?.startsWith('ticket_account') || c.customId?.startsWith('ticket_price'))
-    );
-    if (alreadySent) return;
-  } catch {
-    // fetch 실패해도 계속 진행
-  }
-
-  const accountBtn = new ButtonBuilder()
-    .setCustomId('ticket_account_select')
-    .setLabel('💳 계좌 확인')
-    .setStyle(ButtonStyle.Primary);
-
-  const priceBtn = new ButtonBuilder()
-    .setCustomId(`ticket_price_${robux}`)
-    .setLabel('💰 가격 확인')
-    .setStyle(ButtonStyle.Success);
-
-  await message.channel.send({
-    components: [new ActionRowBuilder().addComponents(accountBtn, priceBtn)],
-  });
+  // 티켓 자동 버튼 부착 기능 비활성화
+  return;
 }
 
 // ─────────────────────────────────────────
