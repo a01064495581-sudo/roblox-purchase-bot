@@ -1,7 +1,9 @@
 // /감사 슬래시 명령어
-// ※ 이 파일은 독립된 파일입니다. 다른 기능을 건드리지 않습니다.
+// ※ 구매로그.js에 저장된 티켓 양식 정보를 가져와서, 감사 메시지에
+//   "📋 구매로그 작성" 버튼을 함께 붙입니다. (티켓 열릴 때 자동으로 보내던 버튼을
+//   이제는 /감사 실행 시점에 보내도록 변경)
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,7 +26,37 @@ module.exports = {
 <a:5PikaStab:1516614149726011574> 좋은 하루 보내세요~ <a:5PikaStab:1516614149726011574>
 " <a:emoji_380:1516614686148133018> <#1508378470273781820> <a:emoji_380:1516614686148133018>`;
 
-    await interaction.reply({ content: message });
+    // 구매로그.js에 저장되어 있던 이 채널의 티켓 양식 정보를 가져옴
+    // (티켓이 열릴 때 자동으로 파싱되어 저장된 닉네임/게임/로벅스 수량/구매자ID)
+    let components = [];
+    try {
+      const purchaseLogCommand = interaction.client.commands?.get('구매로그');
+      const formData = purchaseLogCommand?.getTicketFormData?.(interaction.channel.id);
+
+      if (formData && purchaseLogCommand?.encodeFormState) {
+        // 구매자가 자동으로 안 잡혔으면, 지금 /감사에서 선택한 유저를 구매자로 사용
+        const buyerId = formData.buyerId || user.id;
+
+        const button = new ButtonBuilder()
+          .setCustomId(purchaseLogCommand.encodeFormState({
+            messageId: formData.messageId,
+            buyerId,
+            nickname: formData.nickname,
+            game: formData.game,
+            robux: formData.robux,
+          }))
+          .setLabel('📋 구매로그 작성')
+          .setStyle(ButtonStyle.Success);
+
+        components = [new ActionRowBuilder().addComponents(button)];
+      } else {
+        console.log(`⚠️ [감사] 채널 ${interaction.channel.id}에 저장된 티켓 양식 정보가 없어서 구매로그 버튼을 달지 못했어요.`);
+      }
+    } catch (err) {
+      console.error('❌ [감사] 구매로그 버튼 생성 중 오류:', err);
+    }
+
+    await interaction.reply({ content: message, components });
 
     // 명령어를 사용한 채널 이름을 'ㅇㄹ'로 변경
     try {
