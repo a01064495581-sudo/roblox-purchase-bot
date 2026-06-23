@@ -249,8 +249,27 @@ function decodeFormState(customId) {
   return { messageId, buyerId, nickname, game, robux: Number(robux) };
 }
 
+// ---------------------------------------------------------------------------
+// 티켓 양식 자동 인식 정보 저장소
+//
+// 예전에는 양식이 인식되면 즉시 "구매로그 작성" 버튼을 보냈지만,
+// 이제는 /감사 명령어를 실행하는 시점에 버튼을 보내도록 바뀌어서,
+// 양식 정보를 채널ID 기준으로 메모리에 저장해뒀다가 나중에 꺼내 씁니다.
+// (서버 재시작 시 초기화되지만, 같은 배포 주기 안에서는 충분합니다.)
+// ---------------------------------------------------------------------------
+const ticketFormStore = new Map(); // channelId -> { messageId, buyerId, nickname, game, robux }
+
+function storeTicketFormData(channelId, data) {
+  ticketFormStore.set(channelId, data);
+}
+
+function getTicketFormData(channelId) {
+  return ticketFormStore.get(channelId) || null;
+}
+
 module.exports = {
-  // index.js의 messageCreate 이벤트에서 호출 - Ticket Tool 양식 메시지를 감지해서 버튼을 자동으로 답니다.
+  // index.js의 messageCreate 이벤트에서 호출 - Ticket Tool 양식 메시지를 감지해서
+  // 정보를 저장해둡니다. (버튼은 더 이상 여기서 즉시 보내지 않고, /감사 명령어 실행 시 보냅니다.)
   async handleTicketFormMessage(message) {
     // 봇이 보낸 메시지만 확인 (Ticket Tool도 봇이라 isBot이 true)
     if (!message.author.bot) return;
@@ -268,30 +287,31 @@ module.exports = {
     const parsed = parseTicketForm(message);
     console.log('🔍 [디버그] 파싱 결과:', parsed);
     if (!parsed) {
-      console.log('🔍 [디버그] 파싱 실패로 버튼을 달지 않고 종료합니다.');
+      console.log('🔍 [디버그] 파싱 실패로 정보를 저장하지 않고 종료합니다.');
       return; // 우리가 아는 양식이 아니면 무시
     }
 
     // 티켓을 연 사람(구매자) 찾기: 안내 임베드 본문에 멘션된 첫 유저로 추정
-    // 멘션이 안 잡히면 버튼 누른 관리자가 직접 고르게 함
+    // 멘션이 안 잡히면 버튼 누른 관리자가 직접 고르게 함 (/감사 버튼 처리 시점에)
     const mentionedUser = message.mentions.users.first() || null;
 
-    const button = new ButtonBuilder()
-      .setCustomId(encodeFormState({
-        messageId: message.id,
-        buyerId: mentionedUser?.id || '',
-        nickname: parsed.nickname,
-        game: parsed.game,
-        robux: parsed.robux,
-      }))
-      .setLabel('📋 구매로그 작성')
-      .setStyle(ButtonStyle.Success);
-
-    await message.reply({
-      content: '아래 버튼을 눌러서 이 정보로 구매로그를 자동 작성할 수 있어요.',
-      components: [new ActionRowBuilder().addComponents(button)],
+    // 버튼을 즉시 보내지 않고, 정보만 채널 기준으로 저장해둠
+    // -> /감사 명령어 실행 시 thanks.js가 이 정보를 꺼내서 버튼을 만듦
+    storeTicketFormData(message.channel.id, {
+      messageId: message.id,
+      buyerId: mentionedUser?.id || '',
+      nickname: parsed.nickname,
+      game: parsed.game,
+      robux: parsed.robux,
     });
+    console.log(`🔍 [디버그] 채널 ${message.channel.id}에 양식 정보 저장 완료. (/감사 실행 시 버튼 전송)`);
   },
+
+  // thanks.js 등 다른 파일에서 저장된 양식 정보를 꺼내 쓸 때 사용
+  getTicketFormData,
+
+  // autoform customId를 만들 때 사용 (thanks.js에서도 동일한 형식으로 버튼을 만들기 위해 노출)
+  encodeFormState,
 
   data: new SlashCommandBuilder()
     .setName('구매로그')
