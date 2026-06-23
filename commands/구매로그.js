@@ -104,6 +104,7 @@ const LABELS = {
   // "구매하실 게임"과 "구매하실 게임패스"를 구분해야 하므로
   // game은 "게임패스"가 붙은 라벨보다 먼저 매칭되지 않도록 순서/검증에 주의
   game: ['구매하실 게임', '게임 이름', '게임'],
+  gamepass: ['구매하실 게임패스', '게임패스'],
 };
 
 function escapeRegex(str) {
@@ -152,6 +153,7 @@ function parseTicketForm(message) {
   // "구매하실 게임" 라벨이 "구매하실 게임패스"의 일부로 잘못 매칭되지 않도록
   // "게임" 뒤에 곧바로 "패스"가 오지 않는 경우만 매칭
   const game = extractValue(fullText, LABELS.game, ['패스']);
+  const gamepass = extractValue(fullText, LABELS.gamepass) || null;
 
   if (!robuxText || !nickname || !game) return null;
 
@@ -162,12 +164,12 @@ function parseTicketForm(message) {
 
   if (!robux || Number.isNaN(robux)) return null;
 
-  return { nickname, game, robux };
+  return { nickname, game, robux, gamepass };
 }
 
 // 닉네임을 제외한 나머지 정보로 구매 임베드 + 영수증 카드 이미지를 만드는 공용 함수
 // (최초 실행 / 버튼 재입력 후 모두 재사용)
-async function buildPurchaseResult({ buyer, nickname, passType, game, robux, price }) {
+async function buildPurchaseResult({ buyer, nickname, passType, game, robux, price, gamepass = null }) {
   const purchaseId = generatePurchaseId();
   const robloxUser = await getRobloxUser(nickname);
 
@@ -268,23 +270,24 @@ function decodeState(customId) {
 // 티켓 양식 자동 인식 버튼/선택메뉴용 상태 인코딩
 // "autoform" 접두사로 위 retry_nick 계열과 구분
 const AUTOFORM_SEP = '||';
-function encodeFormState({ messageId, buyerId, nickname, game, robux }) {
+function encodeFormState({ messageId, buyerId, nickname, game, robux, gamepass = '' }) {
   const safeGame = game.replaceAll(AUTOFORM_SEP, '/');
   const safeNickname = nickname.replaceAll(AUTOFORM_SEP, '');
-  let encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${safeGame}${AUTOFORM_SEP}${robux}`;
+  const safeGamepass = (gamepass || '').replaceAll(AUTOFORM_SEP, '/');
+  let encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${safeGame}${AUTOFORM_SEP}${robux}${AUTOFORM_SEP}${safeGamepass}`;
 
   // customId 100자 제한 보호
   if (encoded.length > CUSTOM_ID_LIMIT) {
     const overflow = encoded.length - CUSTOM_ID_LIMIT;
     const trimmedGame = safeGame.slice(0, Math.max(1, safeGame.length - overflow - 3)) + '...';
-    encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${trimmedGame}${AUTOFORM_SEP}${robux}`;
+    encoded = `autoform${AUTOFORM_SEP}${messageId}${AUTOFORM_SEP}${buyerId}${AUTOFORM_SEP}${safeNickname}${AUTOFORM_SEP}${trimmedGame}${AUTOFORM_SEP}${robux}${AUTOFORM_SEP}${safeGamepass}`;
   }
   return encoded;
 }
 
 function decodeFormState(customId) {
-  const [, messageId, buyerId, nickname, game, robux] = customId.split(AUTOFORM_SEP);
-  return { messageId, buyerId, nickname, game, robux: Number(robux) };
+  const [, messageId, buyerId, nickname, game, robux, gamepass] = customId.split(AUTOFORM_SEP);
+  return { messageId, buyerId, nickname, game, robux: Number(robux), gamepass: gamepass || null };
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +344,7 @@ module.exports = {
       nickname: parsed.nickname,
       game: parsed.game,
       robux: parsed.robux,
+      gamepass: parsed.gamepass || null,
     });
     console.log(`🔍 [디버그] 채널 ${message.channel.id}에 양식 정보 저장 완료. (/감사 실행 시 버튼 전송)`);
   },
@@ -622,6 +626,7 @@ module.exports = {
         game: state.game,
         robux: state.robux,
         price,
+        gamepass: state.gamepass,
       });
 
       const payload = {};
