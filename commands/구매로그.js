@@ -212,8 +212,9 @@ async function buildPurchaseResult({ buyer, nickname, passType, game, robux, pri
   const embed = new EmbedBuilder().setColor(notFound ? 0xE67E22 : 0xF1C40F);
 
   if (cardAttachment) {
-    // 카드 렌더링 성공: 이미지가 정보를 전부 보여주므로 임베드는 이미지 틀 역할만 함
-    embed.setImage('attachment://purchase-card.png');
+    // 카드 렌더링 성공: 이미지만 단독 전송 (임베드 없음)
+    embed.setTimestamp();
+    return { embed: null, notFound, cardAttachment };
   } else {
     // 카드 렌더링 실패: 기존 텍스트 레이아웃으로 모든 정보를 표시 (정보 누락 없음)
     embed
@@ -420,7 +421,8 @@ module.exports = {
 
     const { embed, notFound, cardAttachment } = await buildPurchaseResult({ buyer, nickname, passType, game, robux, price });
 
-    const payload = { embeds: [embed] };
+    const payload = {};
+    if (embed) payload.embeds = [embed];
     if (cardAttachment) payload.files = [cardAttachment];
 
     if (notFound) {
@@ -484,7 +486,8 @@ module.exports = {
         price: state.price,
       });
 
-      const payload = { embeds: [embed] };
+      const payload = {};
+      if (embed) payload.embeds = [embed];
       if (cardAttachment) payload.files = [cardAttachment];
 
       if (notFound) {
@@ -621,7 +624,8 @@ module.exports = {
         price,
       });
 
-      const payload = { embeds: [embed] };
+      const payload = {};
+      if (embed) payload.embeds = [embed];
       if (cardAttachment) payload.files = [cardAttachment];
 
       if (notFound) {
