@@ -203,6 +203,7 @@ async function buildPurchaseResult({ buyer, nickname, passType, game, robux, pri
       game,
       robux,
       price,
+      gamepass: gamepass || null,
       purchaseId,
       dateText,
     });
