@@ -170,26 +170,30 @@ async function buildPurchaseResult({ buyer, nickname, passType, game, robux, pri
     robloxProfileUrl = `https://www.roblox.com/search/users?keyword=${encodeURIComponent(nickname)}`;
   }
 
-  // 깔끔하고 미니멀한 레이아웃:
-  // - author 영역에 작은 "구매 완료" 타이틀 + 아이콘 (제목보다 가벼운 느낌)
-  // - description에 구매자/로블록스 정보를 한 번에 정리 (필드 줄 수 줄임)
-  // - 핵심 정보(패스타입/게임/로벅스/가격)만 필드로, 빈 줄 구분선 없이 인라인 배치
-  // - 구매 ID와 시각은 푸터에 그대로 유지 (가장 덜 두드러지는 자리)
   const embed = new EmbedBuilder()
     .setColor(notFound ? 0xE67E22 : 0xF1C40F)
-    .setAuthor({ name: '✅ 구매 완료' })
-    .setDescription(
-      `${buyer} (${buyer.username})\n` +
-      (notFound
-        ? `[${nickname}](${robloxProfileUrl}) ⚠️ 일치하는 유저를 찾지 못했어요`
-        : `[${nickname}](${robloxProfileUrl})`)
-    )
+    .setTitle('✅ 구매 완료')
+    .setDescription('로벅스를 구매해주셔서 감사합니다!')
     .addFields(
+      { name: '구매자', value: `${buyer}\n${buyer.username}`, inline: true },
+      {
+        name: '로블록스',
+        value: notFound
+          ? `[${nickname}](${robloxProfileUrl}) ⚠️ 정확히 일치하는 유저를 찾지 못했어요`
+          : `[${nickname}](${robloxProfileUrl})`,
+        inline: true,
+      },
+      { name: '\u200b', value: '\u200b', inline: false },
       { name: '패스 타입', value: passType, inline: true },
       { name: '게임', value: game, inline: true },
-      { name: '로벅스 · 가격', value: `${robux.toLocaleString()} R$ · ${price}`, inline: true },
+      { name: '\u200b', value: '\u200b', inline: false },
+      {
+        name: '🔶 구매 정보',
+        value: `**${robux.toLocaleString()} 로벅스** · **${price}**`,
+        inline: false,
+      },
     )
-    .setFooter({ text: `구매 ID ${purchaseId} · ${new Date().toLocaleString('ko-KR')}` })
+    .setFooter({ text: `구매 ID: ${purchaseId} | ${new Date().toLocaleString('ko-KR')}` })
     .setTimestamp();
 
   if (avatarUrl) embed.setThumbnail(avatarUrl);
