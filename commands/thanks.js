@@ -44,6 +44,7 @@ module.exports = {
             nickname: formData.nickname,
             game: formData.game,
             robux: formData.robux,
+            gamepass: formData.gamepass || null,
           }))
           .setLabel('📋 구매로그 작성')
           .setStyle(ButtonStyle.Success);
