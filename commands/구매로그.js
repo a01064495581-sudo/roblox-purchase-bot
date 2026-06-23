@@ -10,7 +10,20 @@ const {
   TextInputStyle,
   ChannelType,
   StringSelectMenuBuilder,
+  AttachmentBuilder,
 } = require('discord.js');
+
+// 영수증 카드 이미지 렌더링 모듈은 안전하게(지연) 로드합니다.
+// @napi-rs/canvas가 어떤 이유로든 설치/로드되지 않더라도(예: 배포 환경 문제),
+// 이 require가 구매로그.js 전체를 깨뜨리면 안 되므로 try/catch로 감쌉니다.
+// 로드에 실패하면 renderPurchaseCard는 null이 되고, buildPurchaseResult가
+// 자동으로 텍스트 임베드(fallback)로 전환합니다.
+let renderPurchaseCard = null;
+try {
+  renderPurchaseCard = require('./purchase-card.js').renderPurchaseCard;
+} catch (err) {
+  console.error('⚠️ [구매로그] purchase-card.js 로드 실패 (영수증 카드 이미지 기능 비활성화, 텍스트 임베드로 계속 동작):', err.message);
+}
 
 // 닉네임으로 정확히 일치하는 로블록스 유저 정보(ID) 조회
 async function getRobloxUser(username) {
@@ -152,7 +165,7 @@ function parseTicketForm(message) {
   return { nickname, game, robux };
 }
 
-// 닉네임을 제외한 나머지 정보로 구매 임베드를 만드는 공용 함수
+// 닉네임을 제외한 나머지 정보로 구매 임베드 + 영수증 카드 이미지를 만드는 공용 함수
 // (최초 실행 / 버튼 재입력 후 모두 재사용)
 async function buildPurchaseResult({ buyer, nickname, passType, game, robux, price }) {
   const purchaseId = generatePurchaseId();
@@ -170,35 +183,59 @@ async function buildPurchaseResult({ buyer, nickname, passType, game, robux, pri
     robloxProfileUrl = `https://www.roblox.com/search/users?keyword=${encodeURIComponent(nickname)}`;
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(notFound ? 0xE67E22 : 0xF1C40F)
-    .setTitle('✅ 구매 완료')
-    .setDescription('로벅스를 구매해주셔서 감사합니다!')
-    .addFields(
-      { name: '구매자', value: `${buyer}\n${buyer.username}`, inline: true },
-      {
-        name: '로블록스',
-        value: notFound
-          ? `[${nickname}](${robloxProfileUrl}) ⚠️ 정확히 일치하는 유저를 찾지 못했어요`
-          : `[${nickname}](${robloxProfileUrl})`,
-        inline: true,
-      },
-      { name: '\u200b', value: '\u200b', inline: false },
-      { name: '패스 타입', value: passType, inline: true },
-      { name: '게임', value: game, inline: true },
-      { name: '\u200b', value: '\u200b', inline: false },
-      {
-        name: '🔶 구매 정보',
-        value: `**${robux.toLocaleString()} 로벅스** · **${price}**`,
-        inline: false,
-      },
-    )
-    .setFooter({ text: `구매 ID: ${purchaseId} | ${new Date().toLocaleString('ko-KR')}` })
-    .setTimestamp();
+  const dateText = new Date().toLocaleString('ko-KR');
 
-  if (avatarUrl) embed.setThumbnail(avatarUrl);
+  // 구매 정보를 영수증 카드 이미지(PNG)로 렌더링 시도
+  // 카드 디자인은 항상 동일한 틀(레이아웃/색상)이고, 텍스트 정보만 매번 채워집니다.
+  // 렌더링이 실패해도(예: 폰트/캔버스 문제) 구매로그 자체는 계속 작동해야 하므로 안전하게 처리하고,
+  // 실패 시에는 기존처럼 텍스트 임베드로 모든 정보를 보여줍니다 (fallback).
+  let cardAttachment = null;
+  try {
+    if (!renderPurchaseCard) throw new Error('renderPurchaseCard 모듈이 로드되지 않음');
+    const buffer = await renderPurchaseCard({
+      buyerTag: `${buyer.username}`,
+      nickname,
+      avatarUrl,
+      notFound,
+      passType,
+      game,
+      robux,
+      price,
+      purchaseId,
+      dateText,
+    });
+    cardAttachment = new AttachmentBuilder(buffer, { name: 'purchase-card.png' });
+  } catch (err) {
+    console.error('❌ [구매로그] 영수증 카드 이미지 렌더링 실패, 텍스트 임베드로 대체합니다:', err);
+  }
 
-  return { embed, notFound };
+  const embed = new EmbedBuilder().setColor(notFound ? 0xE67E22 : 0xF1C40F);
+
+  if (cardAttachment) {
+    // 카드 렌더링 성공: 이미지가 정보를 전부 보여주므로 임베드는 이미지 틀 역할만 함
+    embed.setImage('attachment://purchase-card.png');
+  } else {
+    // 카드 렌더링 실패: 기존 텍스트 레이아웃으로 모든 정보를 표시 (정보 누락 없음)
+    embed
+      .setAuthor({ name: '✅ 구매 완료' })
+      .setDescription(
+        `${buyer} (${buyer.username})\n` +
+        (notFound
+          ? `[${nickname}](${robloxProfileUrl}) ⚠️ 일치하는 유저를 찾지 못했어요`
+          : `[${nickname}](${robloxProfileUrl})`)
+      )
+      .addFields(
+        { name: '패스 타입', value: passType, inline: true },
+        { name: '게임', value: game, inline: true },
+        { name: '로벅스 · 가격', value: `${robux.toLocaleString()} R$ · ${price}`, inline: true },
+      )
+      .setFooter({ text: `구매 ID ${purchaseId} · ${dateText}` });
+    if (avatarUrl) embed.setThumbnail(avatarUrl);
+  }
+
+  embed.setTimestamp();
+
+  return { embed, notFound, cardAttachment };
 }
 
 // 재입력 버튼에 현재 정보를 실어 보내기 위한 직렬화/역직렬화
@@ -381,9 +418,10 @@ module.exports = {
       });
     }
 
-    const { embed, notFound } = await buildPurchaseResult({ buyer, nickname, passType, game, robux, price });
+    const { embed, notFound, cardAttachment } = await buildPurchaseResult({ buyer, nickname, passType, game, robux, price });
 
     const payload = { embeds: [embed] };
+    if (cardAttachment) payload.files = [cardAttachment];
 
     if (notFound) {
       const retryButton = new ButtonBuilder()
@@ -437,7 +475,7 @@ module.exports = {
       const newNickname = interaction.fields.getTextInputValue('nickname_input');
       const buyer = await interaction.client.users.fetch(state.buyerId);
 
-      const { embed, notFound } = await buildPurchaseResult({
+      const { embed, notFound, cardAttachment } = await buildPurchaseResult({
         buyer,
         nickname: newNickname,
         passType: state.passType,
@@ -447,6 +485,7 @@ module.exports = {
       });
 
       const payload = { embeds: [embed] };
+      if (cardAttachment) payload.files = [cardAttachment];
 
       if (notFound) {
         const retryButton = new ButtonBuilder()
@@ -573,7 +612,7 @@ module.exports = {
         });
       }
 
-      const { embed, notFound } = await buildPurchaseResult({
+      const { embed, notFound, cardAttachment } = await buildPurchaseResult({
         buyer,
         nickname: state.nickname,
         passType,
@@ -583,6 +622,7 @@ module.exports = {
       });
 
       const payload = { embeds: [embed] };
+      if (cardAttachment) payload.files = [cardAttachment];
 
       if (notFound) {
         const retryButton = new ButtonBuilder()
