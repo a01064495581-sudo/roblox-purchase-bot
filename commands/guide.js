@@ -99,7 +99,21 @@ function parseTicketFormFromChannel(messages) {
     const robux = Number(robuxMatch[0].replace(/,/g, ''));
     if (!robux || Number.isNaN(robux)) continue;
 
-    return { robux, nickname, game, gamepass };
+    // 이 메시지(또는 같은 채널의 다른 봇 메시지)에 멘션된 유저를 구매자로 추정
+    // 안내 임베드 메시지에 보통 "@닉네임 님의 티켓을..." 형태로 구매자가 멘션되어 있음
+    let buyer = message.mentions?.users?.first() || null;
+    if (!buyer) {
+      // 이 메시지 자체에 멘션이 없으면, 같이 순회 중인 다른 메시지에서도 찾아봄
+      for (const other of messages.values()) {
+        const otherMention = other.mentions?.users?.first();
+        if (otherMention) {
+          buyer = otherMention;
+          break;
+        }
+      }
+    }
+
+    return { robux, nickname, game, gamepass, buyer };
   }
   return null;
 }
@@ -199,7 +213,10 @@ module.exports = {
     // 아바타 이미지 있으면 썸네일로 설정
     if (avatarUrl) embed.setThumbnail(avatarUrl);
 
-    await interaction.channel.send({ embeds: [embed] });
+    await interaction.channel.send({
+      content: parsed.buyer ? `${parsed.buyer}` : undefined,
+      embeds: [embed],
+    });
     await interaction.editReply({ content: '✅ 안내 임베드를 전송했어요!' });
   },
 };
