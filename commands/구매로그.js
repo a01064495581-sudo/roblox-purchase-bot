@@ -20,7 +20,7 @@ const {
 // 자동으로 텍스트 임베드(fallback)로 전환합니다.
 let renderPurchaseCard = null;
 try {
-  renderPurchaseCard = require('./purchase-card.js').renderPurchaseCard;
+  renderPurchaseCard = require('../lib/purchase-card.js').renderPurchaseCard;
 } catch (err) {
   console.error('⚠️ [구매로그] purchase-card.js 로드 실패 (영수증 카드 이미지 기능 비활성화, 텍스트 임베드로 계속 동작):', err.message);
 }
