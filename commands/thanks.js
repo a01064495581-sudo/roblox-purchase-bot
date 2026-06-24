@@ -3,12 +3,13 @@
 //   "📋 구매로그 작성" 버튼을 함께 붙입니다. (티켓 열릴 때 자동으로 보내던 버튼을
 //   이제는 /감사 실행 시점에 보내도록 변경)
 
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('감사')
     .setDescription('구매 감사 메시지를 전송합니다.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) // 관리자만 사용 가능
     .addUserOption(option =>
       option
         .setName('유저')
@@ -17,6 +18,14 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // 이중 안전장치: 실행 시점에도 관리자 권한 확인
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
+        ephemeral: true,
+      });
+    }
+
     const user = interaction.options.getUser('유저');
 
     const message = `${user}
