@@ -10,6 +10,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require('discord.js');
+const { isAllowed, replyNoPermission } = require('../lib/permissions');
 
 const TARGET_CHANNEL_NAME = 'ㅇㄹ';
 
@@ -20,13 +21,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    // 이중 안전장치: 실행 시점에도 관리자 권한 확인
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
-        ephemeral: true,
-      });
-    }
+    // 이중 안전장치: 관리자 OR 특별 허용 유저(ALLOWED_USER_IDS)만 사용 가능
+    if (!isAllowed(interaction)) return replyNoPermission(interaction);
 
     // 이름이 정확히 'ㅇㄹ'인 채널 목록 수집
     const targetChannels = interaction.guild.channels.cache.filter(
@@ -69,12 +65,7 @@ module.exports = {
   async handleDeleteComponent(interaction) {
     // 삭제 확인 버튼
     if (interaction.isButton() && interaction.customId === 'delete_channels_confirm') {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({
-          content: '🚫 이 작업은 관리자 권한을 가진 멤버만 할 수 있어요.',
-          ephemeral: true,
-        });
-      }
+      if (!isAllowed(interaction)) return replyNoPermission(interaction);
 
       await interaction.deferUpdate();
 
