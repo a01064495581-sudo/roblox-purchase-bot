@@ -6,6 +6,7 @@ const {
   EmbedBuilder,
   PermissionFlagsBits,
 } = require('discord.js');
+const { isAllowed, replyNoPermission } = require('../lib/permissions');
 
 // GIF URL
 const GIF_URL = 'https://cdn.discordapp.com/attachments/1388285653640282246/1517608996230397982/1.gif?ex=6a3a32c4&is=6a38e144&hm=b199bc601081c42bbf42e04bcaec62e2b7cf64209c2b28ae5245768556716e8a&';
@@ -135,12 +136,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
-        ephemeral: true,
-      });
-    }
+    if (!isAllowed(interaction)) return replyNoPermission(interaction);
 
     await interaction.deferReply({ ephemeral: true });
 
