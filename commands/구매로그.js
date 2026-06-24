@@ -12,6 +12,7 @@ const {
   StringSelectMenuBuilder,
   AttachmentBuilder,
 } = require('discord.js');
+const { isAllowed, replyNoPermission } = require('../lib/permissions');
 
 // 영수증 카드 이미지 렌더링 모듈은 안전하게(지연) 로드합니다.
 // @napi-rs/canvas가 어떤 이유로든 설치/로드되지 않더라도(예: 배포 환경 문제),
@@ -398,7 +399,7 @@ module.exports = {
   async execute(interaction) {
     // 이중 안전장치: setDefaultMemberPermissions는 서버 관리자가 바꿀 수 있는 "기본값"일 뿐이라
     // 실행 시점에도 관리자 권한을 한 번 더 확인합니다.
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    if (!isAllowed(interaction)) {
       return interaction.reply({
         content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
         ephemeral: true,
@@ -453,7 +454,7 @@ module.exports = {
   async handleComponent(interaction) {
     // 1) "닉네임 다시 입력" 버튼 클릭 -> 모달 띄우기
     if (interaction.isButton() && interaction.customId.startsWith('retry_nick')) {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      if (!isAllowed(interaction)) {
         return interaction.reply({
           content: '🚫 이 작업은 관리자 권한을 가진 멤버만 할 수 있어요.',
           ephemeral: true,
@@ -512,7 +513,7 @@ module.exports = {
     // 3) "📋 구매로그 작성" 버튼 클릭 -> 구매자가 자동으로 잡혔으면 패스 타입 선택 메뉴,
     //    못 잡았으면 먼저 구매자를 입력받는 모달
     if (interaction.isButton() && interaction.customId.startsWith('autoform')) {
-      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+      if (!isAllowed(interaction)) {
         return interaction.reply({
           content: '🚫 이 작업은 관리자 권한을 가진 멤버만 할 수 있어요.',
           ephemeral: true,
