@@ -4,6 +4,7 @@
 //   이제는 /감사 실행 시점에 보내도록 변경)
 
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const { isAllowed, replyNoPermission } = require('../lib/permissions');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,13 +19,8 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // 이중 안전장치: 실행 시점에도 관리자 권한 확인
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: '🚫 이 명령어는 관리자 권한을 가진 멤버만 사용할 수 있어요.',
-        ephemeral: true,
-      });
-    }
+    // 이중 안전장치: 관리자 OR 특별 허용 유저(ALLOWED_USER_IDS)만 사용 가능
+    if (!isAllowed(interaction)) return replyNoPermission(interaction);
 
     const user = interaction.options.getUser('유저');
 
