@@ -125,7 +125,7 @@ async function sendTicketPanel(channel) {
       '> 잘못된 카테고리로 열린 티켓은 삭제될 수 있습니다.',
     )
     .setColor(0xf7d01e)
-    .setThumbnail('https://i.imgur.com/8rnMkAI.png')  // 꿀벌/로벅스 이미지 (교체 가능)
+    .setThumbnail('https://cdn.discordapp.com/attachments/1388285653640282246/1519064788020236369/32342.gif?ex=6a3e2d14&is=6a3cdb94&hm=ef0fba9af0039dd555fac32318396b98bd7c9ce9045d10766e513b70174f3b98&')  // 꿀벌/로벅스 이미지 (교체 가능)
     .setFooter({ text: '꿀벌로벅스 • 신속하고 정확한 서비스' })
     .setTimestamp();
 
