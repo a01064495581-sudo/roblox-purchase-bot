@@ -9,6 +9,7 @@ const { startBumpReminder } = require('./commands/bump-reminder.js');
 const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/account-price.js');
 const { handleAutoReact } = require('./commands/auto-react.js');
 const deleteChannelsCommand = require('./commands/delete-channels.js');
+const ticketCommand = require('./commands/ticket.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
 // 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
@@ -132,6 +133,19 @@ client.on('interactionCreate', async (interaction) => {
         } catch (err) {
           console.error('버튼/모달 처리 중 오류:', err);
         }
+      }
+    }
+
+    // ── 🎫 티켓 시스템 버튼/모달 처리 ──
+    if (
+      interaction.customId?.startsWith('ticket_open_') ||
+      interaction.customId?.startsWith('ticket_modal_') ||
+      interaction.customId === 'ticket_close'
+    ) {
+      try {
+        await ticketCommand.handleComponent(interaction);
+      } catch (err) {
+        console.error('티켓 버튼/모달 처리 중 오류:', err);
       }
     }
 
