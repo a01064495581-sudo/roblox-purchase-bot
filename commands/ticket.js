@@ -20,6 +20,12 @@ const {
   PermissionsBitField,
 } = require('discord.js');
 const { isAllowed, replyNoPermission } = require('../lib/permissions.js');
+const {
+  buildAccountSelectRow,
+  buildGuideEmbed,
+  fetchRobloxProfile,
+  ACCOUNT_SELECT_PREFIX,
+} = require('../lib/account-select.js');
 
 // ─────────────────────────────────────────────
 // 🔧 환경변수 설정 안내 (.env에 아래 값들을 추가하세요)
@@ -141,9 +147,9 @@ async function execute(interaction) {
 // ─────────────────────────────────────────────
 async function sendTicketPanel(channel) {
   const embed = new EmbedBuilder()
-    .setTitle('🍯 꿀벌로벅스 구매 및 문의하기')
+    .setTitle('🍯 꿀벌로벅스 고객 지원 센터')
     .setDescription(
-      '> 안녕하세요! **꿀벌로벅스** 입니다. 🐝\n' +
+      '> 안녕하세요! **꿀벌로벅스** 고객지원 센터입니다. 🐝\n' +
       '> 아래 버튼을 눌러 문의 유형에 맞는 티켓을 열어주세요.\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '🛒 **로벅스 구매 문의**\n' +
@@ -158,7 +164,7 @@ async function sendTicketPanel(channel) {
     )
     .setColor(0xf7d01e)
     .setThumbnail('https://i.imgur.com/8rnMkAI.png')  // 꿀벌/로벅스 이미지 (교체 가능)
-    .setFooter({ text: '꿀벌로벅스 • 빠르고 싼 로벅스 서버' })
+    .setFooter({ text: '꿀벌로벅스 • 신속하고 정확한 서비스' })
     .setTimestamp();
 
   const row = new ActionRowBuilder().addComponents(
@@ -197,6 +203,11 @@ async function handleComponent(interaction) {
   if (id === 'ticket_modal_robux') return createTicketChannel(interaction, TICKET_TYPE.ROBUX);
   if (id === 'ticket_modal_ingame') return createTicketChannel(interaction, TICKET_TYPE.INGAME);
   if (id === 'ticket_modal_general') return createTicketChannel(interaction, TICKET_TYPE.GENERAL);
+
+  // ── 계좌 선택 드롭다운 (티켓 작성자 전용) ──
+  if (interaction.isStringSelectMenu() && id.startsWith(ACCOUNT_SELECT_PREFIX)) {
+    return handleAccountSelect(interaction);
+  }
 
   // ── 티켓 닫기 버튼 ──
   if (id === 'ticket_close') return closeTicket(interaction);
@@ -427,6 +438,8 @@ async function createTicketChannel(interaction, type) {
   // ── 모달 응답값 파싱 ──
   const fields = interaction.fields;
   let formEmbed;
+  // 자동 안내 임베드(계좌 드롭다운)에 쓸 정보. 티켓 유형마다 채울 수 있는 값이 다름.
+  let guideInfo = { robux: null, nickname: null, game: null, gamepass: null };
 
   // ─────────────────────────────────────────────────────────────────
   // ⚠️  파싱 호환성 주의
@@ -457,6 +470,17 @@ async function createTicketChannel(interaction, type) {
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
 
+    // 로벅스 수량은 숫자만 추출 (예: "1,000개" 같은 입력도 안전하게 처리)
+    const robuxMatch = String(amount).match(/[\d,]+/);
+    const robuxNum = robuxMatch ? Number(robuxMatch[0].replace(/,/g, '')) : null;
+
+    guideInfo = {
+      robux: (robuxNum && !Number.isNaN(robuxNum)) ? robuxNum : null,
+      nickname: nickname || null,
+      game: game || null,
+      gamepass: gamepass || null,
+    };
+
   } else if (type === TICKET_TYPE.INGAME) {
     const item     = fields.getTextInputValue('item_name');
     const nickname = fields.getTextInputValue('roblox_nickname');
@@ -473,6 +497,13 @@ async function createTicketChannel(interaction, type) {
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
 
+    guideInfo = {
+      robux: null,
+      nickname: nickname || null,
+      game: item || null,
+      gamepass: null,
+    };
+
   } else {
     const question = fields.getTextInputValue('question');
 
@@ -484,6 +515,9 @@ async function createTicketChannel(interaction, type) {
       .setColor(meta.color)
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
+
+    // 문의하기 티켓은 로벅스/닉네임/게임 정보가 없으므로 계좌 안내만 표시됨
+    guideInfo = { robux: null, nickname: null, game: null, gamepass: null };
   }
 
   // ── 티켓 채널에 환영 메시지 전송 ──
@@ -504,10 +538,157 @@ async function createTicketChannel(interaction, type) {
     components: [closeRow],
   });
 
+  // ── 자동 구매 안내 임베드 + 계좌 드롭다운 전송 ──
+  // 로블록스 닉네임이 있으면 프로필/아바타를 조회해서 보여줌.
+  // API 호출이 실패해도(로블록스 서버 오류, 닉네임 없음 등) 안내 메시지 전송 자체는 항상 진행되도록
+  // try/catch로 감싸서 어떤 경우에도 채널에 오류가 노출되지 않게 함.
+  try {
+    let avatarUrl = null;
+    let profileUrl = null;
+
+    if (guideInfo.nickname) {
+      const profile = await fetchRobloxProfile(guideInfo.nickname);
+      avatarUrl = profile.avatarUrl;
+      profileUrl = profile.profileUrl;
+    }
+
+    const guideEmbed = buildGuideEmbed({
+      robux: guideInfo.robux,
+      nickname: guideInfo.nickname,
+      game: guideInfo.game,
+      gamepass: guideInfo.gamepass,
+      accountIndex: null, // 아직 계좌 미선택 상태로 시작
+      avatarUrl,
+      nicknameProfileUrl: profileUrl,
+    });
+
+    const accountRow = buildAccountSelectRow(user.id);
+
+    await ticketChannel.send({
+      content: `<@${user.id}> 님, 아래에서 입금하실 계좌를 선택해주세요. 🙏`,
+      embeds: [guideEmbed],
+      components: [accountRow],
+    });
+  } catch (err) {
+    console.error('자동 구매 안내 전송 중 오류:', err);
+    // 안내 전송이 실패해도 티켓 생성 자체는 이미 끝났으므로 사용자에게는 영향 없음.
+    // 관리자가 /안내 명령어로 수동 재전송할 수 있음.
+  }
+
   // ── 사용자에게 채널 링크 안내 ──
   await interaction.editReply({
     content: `✅ 티켓이 열렸어요! → <#${ticketChannel.id}>`,
   });
+}
+
+// ─────────────────────────────────────────────
+// 계좌 선택 드롭다운 처리
+// customId 형식: ticket_acc_select:<ticketAuthorId>
+// → 티켓을 연 사람만 선택할 수 있고, 선택하면 안내 메시지를 수정해서
+//   계좌 정보를 채워 넣음. 다른 사람이 누르면 ephemeral 오류만 보여주고
+//   원본 메시지는 건드리지 않음.
+// ─────────────────────────────────────────────
+async function handleAccountSelect(interaction) {
+  try {
+    const ticketAuthorId = interaction.customId.slice('ticket_acc_select:'.length);
+
+    // ── 권한 체크: 티켓을 연 사람 본인만 선택 가능 ──
+    if (ticketAuthorId && interaction.user.id !== ticketAuthorId) {
+      return interaction.reply({
+        content: '🚫 이 계좌 선택은 티켓을 연 본인만 할 수 있어요.',
+        ephemeral: true,
+      });
+    }
+
+    const accIdx = Number(interaction.values?.[0]);
+    if (Number.isNaN(accIdx)) {
+      return interaction.reply({
+        content: '⚠️ 계좌 선택값을 읽지 못했어요. 다시 시도해주세요.',
+        ephemeral: true,
+      });
+    }
+
+    // 원본 메시지의 첫 번째 임베드를 기준으로 기존 정보(로벅스/닉네임/게임/게임패스)를 다시 읽어서
+    // 계좌 정보만 새로 채워 넣음 (다른 정보는 그대로 유지)
+    const originalEmbed = interaction.message.embeds?.[0];
+    const reparsed = originalEmbed ? parseGuideEmbedFields(originalEmbed) : {};
+
+    await interaction.deferUpdate();
+
+    let avatarUrl = null;
+    let profileUrl = null;
+    if (reparsed.nickname) {
+      const profile = await fetchRobloxProfile(reparsed.nickname);
+      avatarUrl = profile.avatarUrl;
+      profileUrl = profile.profileUrl;
+    }
+
+    const updatedEmbed = buildGuideEmbed({
+      robux: reparsed.robux,
+      nickname: reparsed.nickname,
+      game: reparsed.game,
+      gamepass: reparsed.gamepass,
+      accountIndex: accIdx,
+      avatarUrl,
+      nicknameProfileUrl: profileUrl,
+    });
+
+    // 선택이 끝났어도 드롭다운은 그대로 남겨서 계좌를 바꾸고 싶을 때 다시 선택할 수 있게 함
+    const accountRow = buildAccountSelectRow(ticketAuthorId || interaction.user.id);
+
+    await interaction.editReply({
+      embeds: [updatedEmbed],
+      components: [accountRow],
+    });
+  } catch (err) {
+    console.error('계좌 드롭다운 처리 중 오류:', err);
+    // 이미 reply/deferUpdate가 진행된 경우를 대비해 안전하게 followUp 시도
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: '⚠️ 계좌 선택 처리 중 오류가 발생했어요. 다시 시도해주세요.',
+          ephemeral: true,
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: '⚠️ 계좌 선택 처리 중 오류가 발생했어요. 다시 시도해주세요.',
+          ephemeral: true,
+        }).catch(() => {});
+      }
+    } catch (_) {
+      // 여기서도 실패하면 더 이상 할 수 있는 게 없으므로 조용히 무시
+    }
+  }
+}
+
+// 안내 임베드(fields)에서 로벅스/닉네임/게임/게임패스 값을 다시 읽어옴.
+// buildGuideEmbed가 만든 필드 이름(name)을 기준으로 역추출.
+function parseGuideEmbedFields(embed) {
+  const result = { robux: null, nickname: null, game: null, gamepass: null };
+  if (!embed?.fields) return result;
+
+  for (const field of embed.fields) {
+    const name = field.name;
+    const value = field.value;
+
+    if (name === '구매 로벅스') {
+      const match = String(value).match(/[\d,]+/);
+      if (match) {
+        const n = Number(match[0].replace(/,/g, ''));
+        if (!Number.isNaN(n)) result.robux = n;
+      }
+    } else if (name === '로블록스 닉네임') {
+      // "[닉네임](url)" 형식이면 닉네임만 추출, 아니면 그대로
+      const linkMatch = String(value).match(/^\[(.+)\]\(.+\)$/);
+      result.nickname = linkMatch ? linkMatch[1] : value;
+    } else if (name === '구매하실 게임') {
+      result.game = value;
+    } else if (name === '구매하실 게임패스') {
+      result.gamepass = value;
+    }
+  }
+
+  return result;
 }
 
 // ─────────────────────────────────────────────
