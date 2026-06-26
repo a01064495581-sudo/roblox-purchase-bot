@@ -136,10 +136,11 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // ── 🎫 티켓 시스템 버튼/모달 처리 ──
+    // ── 🎫 티켓 시스템 버튼/모달/계좌 드롭다운 처리 ──
     if (
       interaction.customId?.startsWith('ticket_open_') ||
       interaction.customId?.startsWith('ticket_modal_') ||
+      interaction.customId?.startsWith('ticket_acc_select:') ||
       interaction.customId === 'ticket_close'
     ) {
       try {
