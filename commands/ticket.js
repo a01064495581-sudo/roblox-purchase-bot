@@ -141,9 +141,9 @@ async function execute(interaction) {
 // ─────────────────────────────────────────────
 async function sendTicketPanel(channel) {
   const embed = new EmbedBuilder()
-    .setTitle('🍯 꿀벌로벅스 고객 지원 센터')
+    .setTitle('🍯 꿀벌로벅스 구매 및 문의하기')
     .setDescription(
-      '> 안녕하세요! **꿀벌로벅스** 고객지원 센터입니다. 🐝\n' +
+      '> 안녕하세요! **꿀벌로벅스** 입니다. 🐝\n' +
       '> 아래 버튼을 눌러 문의 유형에 맞는 티켓을 열어주세요.\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '🛒 **로벅스 구매 문의**\n' +
@@ -158,7 +158,7 @@ async function sendTicketPanel(channel) {
     )
     .setColor(0xf7d01e)
     .setThumbnail('https://i.imgur.com/8rnMkAI.png')  // 꿀벌/로벅스 이미지 (교체 가능)
-    .setFooter({ text: '꿀벌로벅스 • 신속하고 정확한 서비스' })
+    .setFooter({ text: '꿀벌로벅스 • 빠르고 싼 로벅스 서버' })
     .setTimestamp();
 
   const row = new ActionRowBuilder().addComponents(
