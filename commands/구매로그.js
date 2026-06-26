@@ -300,14 +300,45 @@ function decodeFormState(customId) {
 // 양식 정보를 채널ID 기준으로 메모리에 저장해뒀다가 나중에 꺼내 씁니다.
 // (서버 재시작 시 초기화되지만, 같은 배포 주기 안에서는 충분합니다.)
 // ---------------------------------------------------------------------------
-const ticketFormStore = new Map(); // channelId -> { messageId, buyerId, nickname, game, robux }
+// ---------------------------------------------------------------------------
+// ticketFormStore: 파일 기반 영속 저장소
+//
+// 이전에는 Map(메모리)에만 저장했는데, Render 무료 플랜은 15분 비활성 시
+// 슬립 후 재시작되어 메모리가 초기화됩니다. 그러면 /감사 실행 시
+// "저장된 티켓 양식 정보가 없어요" 경고가 나고 구매로그 버튼이 안 붙습니다.
+// 파일(JSON)에 저장하면 봇이 재시작돼도 데이터가 유지됩니다.
+// ---------------------------------------------------------------------------
+const fs = require('node:fs');
+const STORE_PATH = require('node:path').join(__dirname, '..', 'ticket-form-store.json');
+
+function loadStore() {
+  try {
+    if (fs.existsSync(STORE_PATH)) {
+      return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.error('⚠️ [티켓스토어] 파일 읽기 실패, 빈 스토어로 시작합니다:', e.message);
+  }
+  return {};
+}
+
+function saveStore(store) {
+  try {
+    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
+  } catch (e) {
+    console.error('⚠️ [티켓스토어] 파일 저장 실패:', e.message);
+  }
+}
 
 function storeTicketFormData(channelId, data) {
-  ticketFormStore.set(channelId, data);
+  const store = loadStore();
+  store[channelId] = data;
+  saveStore(store);
 }
 
 function getTicketFormData(channelId) {
-  return ticketFormStore.get(channelId) || null;
+  const store = loadStore();
+  return store[channelId] || null;
 }
 
 module.exports = {
