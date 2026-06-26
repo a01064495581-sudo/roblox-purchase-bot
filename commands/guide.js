@@ -3,57 +3,13 @@
 
 const {
   SlashCommandBuilder,
-  EmbedBuilder,
   PermissionFlagsBits,
 } = require('discord.js');
 const { isAllowed, replyNoPermission } = require('../lib/permissions');
-
-// GIF URL
-const GIF_URL = 'https://cdn.discordapp.com/attachments/1388285653640282246/1517608996230397982/1.gif?ex=6a3a32c4&is=6a38e144&hm=b199bc601081c42bbf42e04bcaec62e2b7cf64209c2b28ae5245768556716e8a&';
-
-// 계좌 정보
-const ACCOUNTS = [
-  { name: '박양봉', bank: '토스뱅크', number: '1001-6192-9770', holder: '박제영' },
-  { name: '김양봉', bank: '토스뱅크', number: '1002-1293-2074', holder: '김부성' },
-  { name: '오리',   bank: '토스뱅크', number: '1000-8188-8025', holder: '유민성' },
-];
-
-// 1만원당 1400로벅스 기준 가격 계산
-function calculatePrice(robux) {
-  const won = Math.round(robux * (10000 / 1400));
-  return won.toLocaleString('ko-KR') + '원';
-}
-
-// 구매로그.js와 동일한 로블록스 API 함수
-async function getRobloxUser(username) {
-  try {
-    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usernames: [username], excludeBannedUsers: false }),
-    });
-    const data = await res.json();
-    if (!data.data || data.data.length === 0) return null;
-    return data.data[0];
-  } catch (err) {
-    console.error('로블록스 유저 조회 실패:', err);
-    return null;
-  }
-}
-
-async function getRobloxAvatar(userId) {
-  try {
-    const res = await fetch(
-      `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=180x180&format=Png&isCircular=false`
-    );
-    const data = await res.json();
-    if (!data.data || data.data.length === 0) return null;
-    return data.data[0].imageUrl;
-  } catch (err) {
-    console.error('로블록스 아바타 조회 실패:', err);
-    return null;
-  }
-}
+const {
+  buildGuideEmbed,
+  fetchRobloxProfile,
+} = require('../lib/account-select');
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -155,59 +111,19 @@ module.exports = {
     }
 
     const accIdx = Number(interaction.options.getString('계좌'));
-    const acc    = ACCOUNTS[accIdx];
-    const price  = calculatePrice(parsed.robux);
 
-    // 로블록스 프로필 조회
-    const robloxUser = await getRobloxUser(parsed.nickname);
-    let avatarUrl = null;
-    let robloxProfileUrl = null;
+    // 로블록스 프로필 조회 (실패해도 안내 전송은 계속 진행)
+    const { profileUrl, avatarUrl } = await fetchRobloxProfile(parsed.nickname);
 
-    if (robloxUser) {
-      robloxProfileUrl = `https://www.roblox.com/users/${robloxUser.id}/profile`;
-      avatarUrl = await getRobloxAvatar(robloxUser.id);
-    }
-
-    // 닉네임 필드값: 프로필 링크 있으면 하이퍼링크로, 없으면 그냥 텍스트
-    const nicknameValue = robloxProfileUrl
-      ? `[${parsed.nickname}](${robloxProfileUrl})`
-      : parsed.nickname;
-
-    const embed = new EmbedBuilder()
-      .setColor(0xF1C40F)
-      .setTitle('구매 안내')
-      .addFields(
-        { name: '구매 로벅스',       value: `${parsed.robux.toLocaleString('ko-KR')} R$`, inline: false },
-        { name: '\u200b',            value: '\u200b', inline: false },
-        { name: '로블록스 닉네임',   value: nicknameValue, inline: false },
-        { name: '\u200b',            value: '\u200b', inline: false },
-        { name: '구매하실 게임',     value: parsed.game, inline: false },
-        { name: '\u200b',            value: '\u200b', inline: false },
-        { name: '구매하실 게임패스', value: parsed.gamepass, inline: false },
-        { name: '\u200b',            value: '\u200b', inline: false },
-        {
-          name: '입금 안내',
-          value: `**${price}**을 아래 계좌로 입금해 주세요.\n\n${acc.bank} \`${acc.number}\` : **${acc.holder}**`,
-          inline: false,
-        },
-        { name: '\u200b', value: '\u200b', inline: false },
-        {
-          name: '이중창 인증 필수',
-          value: '**이중창이 뭔가요?** <#1508377099847864402> 를 확인하세요.',
-          inline: false,
-        },
-        { name: '\u200b', value: '\u200b', inline: false },
-        {
-          name: '\u200b',
-          value: '*(10,000원당 1,400로벅스 기준)*',
-          inline: false,
-        },
-      )
-      .setImage(GIF_URL)
-      .setTimestamp();
-
-    // 아바타 이미지 있으면 썸네일로 설정
-    if (avatarUrl) embed.setThumbnail(avatarUrl);
+    const embed = buildGuideEmbed({
+      robux: parsed.robux,
+      nickname: parsed.nickname,
+      game: parsed.game,
+      gamepass: parsed.gamepass,
+      accountIndex: accIdx,
+      avatarUrl,
+      nicknameProfileUrl: profileUrl,
+    });
 
     await interaction.channel.send({
       content: parsed.buyer ? `${parsed.buyer}` : undefined,
