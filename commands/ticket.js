@@ -3,6 +3,7 @@
 // - 로벅스 구매 문의 / 인게임 구매 문의 / 문의하기 3가지 카테고리
 // - 각 카테고리별 전용 채널 카테고리에 티켓 채널 생성
 // - 티켓 오픈 시 자동 멘션 + 임베드 양식 전송
+// - 유저당 최대 3개 티켓 제한
 
 require('dotenv').config();
 const {
@@ -28,6 +29,9 @@ const { isAllowed, replyNoPermission } = require('../lib/permissions.js');
 // TICKET_INGAME_CATEGORY_ID = 인게임 구매 문의 카테고리 ID
 // TICKET_GENERAL_CATEGORY_ID= 문의하기 카테고리 ID
 // ─────────────────────────────────────────────
+
+// 유저당 최대 오픈 티켓 수
+const MAX_TICKETS_PER_USER = 3;
 
 // 티켓 타입 상수
 const TICKET_TYPE = {
@@ -60,6 +64,34 @@ const TICKET_META = {
     channelPrefix: '문의',
   },
 };
+
+// ─────────────────────────────────────────────
+// 🔢 유저의 현재 열린 티켓 수 계산
+// 채널 topic에 유저 ID를 기록해두고 카운팅
+// ─────────────────────────────────────────────
+function countUserTickets(guild, userId) {
+  // 3개 티켓 카테고리 ID 목록
+  const categoryIds = [
+    process.env.TICKET_ROBUX_CATEGORY_ID,
+    process.env.TICKET_INGAME_CATEGORY_ID,
+    process.env.TICKET_GENERAL_CATEGORY_ID,
+  ].filter(Boolean);
+
+  let count = 0;
+
+  for (const channel of guild.channels.cache.values()) {
+    // 텍스트 채널이고 topic에 해당 유저 ID가 포함된 경우 카운트
+    if (
+      channel.type === ChannelType.GuildText &&
+      channel.topic?.includes(userId) &&
+      (categoryIds.length === 0 || categoryIds.includes(channel.parentId))
+    ) {
+      count++;
+    }
+  }
+
+  return count;
+}
 
 // ─────────────────────────────────────────────
 // 슬래시 명령어 정의
@@ -125,7 +157,7 @@ async function sendTicketPanel(channel) {
       '> 잘못된 카테고리로 열린 티켓은 삭제될 수 있습니다.',
     )
     .setColor(0xf7d01e)
-    .setThumbnail('https://cdn.discordapp.com/attachments/1388285653640282246/1519064788020236369/32342.gif?ex=6a3e2d14&is=6a3cdb94&hm=ef0fba9af0039dd555fac32318396b98bd7c9ce9045d10766e513b70174f3b98&')  // 꿀벌/로벅스 이미지 (교체 가능)
+    .setThumbnail('https://i.imgur.com/8rnMkAI.png')  // 꿀벌/로벅스 이미지 (교체 가능)
     .setFooter({ text: '꿀벌로벅스 • 신속하고 정확한 서비스' })
     .setTimestamp();
 
@@ -171,9 +203,28 @@ async function handleComponent(interaction) {
 }
 
 // ─────────────────────────────────────────────
-// 모달 표시
+// 모달 표시 (티켓 수 제한 체크 포함)
 // ─────────────────────────────────────────────
 async function openTicketModal(interaction, type) {
+  // ── 티켓 개수 제한 체크 (모달 표시 전에 먼저 확인) ──
+  const currentCount = countUserTickets(interaction.guild, interaction.user.id);
+  if (currentCount >= MAX_TICKETS_PER_USER) {
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('⛔ 티켓 한도 초과')
+          .setDescription(
+            `현재 열려 있는 티켓이 **${currentCount}개** 있어요.\n` +
+            `한 명당 최대 **${MAX_TICKETS_PER_USER}개**까지만 티켓을 열 수 있어요.\n\n` +
+            '기존 티켓이 처리된 후에 다시 시도해주세요! 🙏',
+          )
+          .setColor(0xff4444)
+          .setFooter({ text: '꿀벌로벅스 • 티켓 시스템' }),
+      ],
+      ephemeral: true,
+    });
+  }
+
   let modal;
 
   if (type === TICKET_TYPE.ROBUX) {
@@ -285,6 +336,24 @@ async function createTicketChannel(interaction, type) {
   const user = interaction.user;
   const meta = TICKET_META[type];
 
+  // ── 2차 안전 체크 (모달 제출 시점에 다시 확인 — 레이스 컨디션 방어) ──
+  const currentCount = countUserTickets(guild, user.id);
+  if (currentCount >= MAX_TICKETS_PER_USER) {
+    return interaction.editReply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('⛔ 티켓 한도 초과')
+          .setDescription(
+            `현재 열려 있는 티켓이 **${currentCount}개** 있어요.\n` +
+            `한 명당 최대 **${MAX_TICKETS_PER_USER}개**까지만 티켓을 열 수 있어요.\n\n` +
+            '기존 티켓이 처리된 후에 다시 시도해주세요! 🙏',
+          )
+          .setColor(0xff4444)
+          .setFooter({ text: '꿀벌로벅스 • 티켓 시스템' }),
+      ],
+    });
+  }
+
   // 카테고리 ID 가져오기
   const categoryId = process.env[meta.categoryEnv];
   const category = categoryId ? guild.channels.cache.get(categoryId) : null;
@@ -292,9 +361,17 @@ async function createTicketChannel(interaction, type) {
   // 관리자 역할 ID
   const adminRoleId = process.env.TICKET_ADMIN_ROLE_ID;
 
-  // 채널 이름 (예: 로벅스구매-username)
+  // 채널 이름 (예: 로벅스구매-username, 로벅스구매-username-2, -3 ...)
   const safeUsername = user.username.replace(/[^a-zA-Z0-9가-힣ㄱ-ㅎ]/g, '').slice(0, 20) || user.id;
-  const channelName = `${meta.channelPrefix}-${safeUsername}`;
+  const baseChannelName = `${meta.channelPrefix}-${safeUsername}`;
+
+  // 이미 같은 이름의 채널이 있으면 번호를 붙여서 중복 방지
+  let channelName = baseChannelName;
+  let suffix = 2;
+  while (guild.channels.cache.find(ch => ch.name === channelName)) {
+    channelName = `${baseChannelName}-${suffix}`;
+    suffix++;
+  }
 
   // ── 권한 설정 ──
   // 기본: @everyone 접근 차단
@@ -351,49 +428,60 @@ async function createTicketChannel(interaction, type) {
   const fields = interaction.fields;
   let formEmbed;
 
+  // ─────────────────────────────────────────────────────────────────
+  // ⚠️  파싱 호환성 주의
+  //
+  // 구매로그.js의 parseTicketForm()은 embed.description에서
+  //   **라벨** ```\n값\n```
+  // 패턴을 정규식으로 추출합니다.
+  // 아래 description 포맷은 그 패턴을 그대로 따르며,
+  // 이미지(Ticket Tool 스타일)처럼 보이도록 줄바꿈·공백을 추가했습니다.
+  // ─────────────────────────────────────────────────────────────────
+
   if (type === TICKET_TYPE.ROBUX) {
-    const amount = fields.getTextInputValue('robux_amount');
+    const amount   = fields.getTextInputValue('robux_amount');
     const nickname = fields.getTextInputValue('roblox_nickname');
-    const game = fields.getTextInputValue('target_game');
+    const game     = fields.getTextInputValue('target_game');
     const gamepass = fields.getTextInputValue('target_gamepass');
 
+    // 구매로그 파싱 호환 포맷 (description 기반)
+    const desc =
+      `**로벅스 구매 수량** \`\`\`\n${amount}\`\`\`\n` +
+      `**로블록스 닉네임** \`\`\`\n${nickname}\`\`\`\n` +
+      `**구매하실 게임** \`\`\`\n${game}\`\`\`\n` +
+      `**구매하실 게임패스** \`\`\`\n${gamepass}\`\`\``;
+
     formEmbed = new EmbedBuilder()
-      .setTitle('🛒 로벅스 구매 문의 양식')
+      .setDescription(desc)
       .setColor(meta.color)
-      .addFields(
-        { name: '1️⃣ 로벅스 구매 수량', value: `\`${amount}\` R$`, inline: false },
-        { name: '2️⃣ 로블록스 닉네임', value: `\`${nickname}\``, inline: false },
-        { name: '3️⃣ 구매하실 게임', value: `\`${game}\``, inline: false },
-        { name: '4️⃣ 구매하실 게임패스', value: `\`${gamepass}\``, inline: false },
-      )
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
 
   } else if (type === TICKET_TYPE.INGAME) {
-    const item = fields.getTextInputValue('item_name');
+    const item     = fields.getTextInputValue('item_name');
     const nickname = fields.getTextInputValue('roblox_nickname');
-    const extra = fields.getTextInputValue('extra_note') || '없음';
+    const extra    = fields.getTextInputValue('extra_note') || '없음';
+
+    const desc =
+      `**어떤 아이템을 구매하시나요?** \`\`\`\n${item}\`\`\`\n` +
+      `**로블록스 닉네임** \`\`\`\n${nickname}\`\`\`\n` +
+      `**기타 사항** \`\`\`\n${extra}\`\`\``;
 
     formEmbed = new EmbedBuilder()
-      .setTitle('🎮 인게임 구매 문의 양식')
+      .setDescription(desc)
       .setColor(meta.color)
-      .addFields(
-        { name: '1️⃣ 구매하실 아이템', value: `\`${item}\``, inline: false },
-        { name: '2️⃣ 로블록스 닉네임', value: `\`${nickname}\``, inline: false },
-        { name: '3️⃣ 기타 사항', value: extra, inline: false },
-      )
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
 
   } else {
     const question = fields.getTextInputValue('question');
 
+    const desc =
+      `**문제사항 및 질문** \`\`\`\n${question}\`\`\``;
+
     formEmbed = new EmbedBuilder()
-      .setTitle('💬 문의하기 양식')
+      .setDescription(desc)
       .setColor(meta.color)
-      .addFields(
-        { name: '1️⃣ 문제사항 및 질문', value: question, inline: false },
-      )
       .setFooter({ text: `티켓 작성자: ${user.tag}` })
       .setTimestamp();
   }
