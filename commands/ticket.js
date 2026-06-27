@@ -556,8 +556,8 @@ async function createTicketChannel(interaction, type) {
   });
 
   // ── 자동 구매 안내 임베드 + 계좌 드롭다운 전송 ──
-  // 로벅스 구매 / 인게임 구매 티켓에서만 전송. 문의하기(inquiry)는 생략.
-  if (type !== 'inquiry') try {
+  // 로벅스 구매 / 인게임 구매 티켓에서만 전송. 문의하기(general)는 생략.
+  if (type !== TICKET_TYPE.GENERAL) try {
     let avatarUrl = null;
     let profileUrl = null;
 
