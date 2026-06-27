@@ -565,9 +565,12 @@ async function createTicketChannel(interaction, type) {
     const accountRow = buildAccountSelectRow(user.id);
 
     await ticketChannel.send({
-      content: `<@${user.id}> 님, 아래에서 입금하실 계좌를 선택해주세요. 🙏`,
       embeds: [guideEmbed],
       components: [accountRow],
+    });
+
+    await ticketChannel.send({
+      content: '누구한테 입금해야하나요? ➡️ 관리자가 확인후 알려드립니다 기다려주세요.',
     });
   } catch (err) {
     console.error('자동 구매 안내 전송 중 오류:', err);
