@@ -64,6 +64,22 @@ module.exports = {
 
     await interaction.reply({ content: message, components });
 
+    // ── 역할 부여 ──
+    // .env 에 THANKS_ROLE_ID=역할ID 를 추가하면 해당 역할을 티켓 연 유저에게 자동 부여
+    const roleId = process.env.THANKS_ROLE_ID;
+    if (roleId) {
+      try {
+        const guild = interaction.guild;
+        const targetMember = await guild.members.fetch(user.id);
+        if (targetMember) {
+          await targetMember.roles.add(roleId, '/감사 명령어로 역할 부여');
+          console.log(`✅ [감사] ${user.tag} 에게 역할 ${roleId} 부여 완료`);
+        }
+      } catch (err) {
+        console.error('❌ [감사] 역할 부여 실패:', err.message);
+      }
+    }
+
     // 명령어를 사용한 채널 이름을 'ㅇㄹ'로 변경
     try {
       await interaction.channel.setName('ㅇㄹ', '/감사 명령어 실행으로 채널명 변경');
