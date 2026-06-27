@@ -556,10 +556,8 @@ async function createTicketChannel(interaction, type) {
   });
 
   // ── 자동 구매 안내 임베드 + 계좌 드롭다운 전송 ──
-  // 로블록스 닉네임이 있으면 프로필/아바타를 조회해서 보여줌.
-  // API 호출이 실패해도(로블록스 서버 오류, 닉네임 없음 등) 안내 메시지 전송 자체는 항상 진행되도록
-  // try/catch로 감싸서 어떤 경우에도 채널에 오류가 노출되지 않게 함.
-  try {
+  // 로벅스 구매 / 인게임 구매 티켓에서만 전송. 문의하기(inquiry)는 생략.
+  if (type !== 'inquiry') try {
     let avatarUrl = null;
     let profileUrl = null;
 
