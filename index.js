@@ -8,6 +8,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes, Partials } = requir
 const { startBumpReminder } = require('./commands/bump-reminder.js');
 const { handleTicketInfoButtons, handleInfoComponent } = require('./commands/account-price.js');
 const { handleAutoReact } = require('./commands/auto-react.js');
+const { handleAntiInviteLink } = require('./commands/anti-invite-link.js');
 const deleteChannelsCommand = require('./commands/delete-channels.js');
 const ticketCommand = require('./commands/ticket.js');
 
@@ -184,6 +185,15 @@ client.on('messageCreate', async (message) => {
   // 디버그: messageCreate 이벤트 자체가 발화하는지 무조건 확인하는 로그
   console.log(`🔍 [디버그-최상단] messageCreate 발생! 채널: ${message.channel.id}, 작성자: ${message.author.tag}, 봇여부: ${message.author.bot}, 임베드개수: ${message.embeds.length}`);
 
+  // 디스코드 초대 링크 자동 감지/삭제 (anti-invite-link.js, 다른 기능과 완전히 독립)
+  // 삭제된 메시지면 그 다음 로직(양식 감지, 자동반응 등)을 더 진행할 필요가 없으므로 바로 종료
+  try {
+    const wasDeleted = await handleAntiInviteLink(message);
+    if (wasDeleted) return;
+  } catch (err) {
+    console.error('초대 링크 감지 처리 중 오류:', err);
+  }
+
   try {
     const purchaseLogCommand = client.commands.get('구매로그');
     if (purchaseLogCommand?.handleTicketFormMessage) {
@@ -223,6 +233,14 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   }
 
   console.log(`🔍 [디버그-최상단] messageUpdate 발생! 채널: ${newMessage.channel?.id}, 작성자: ${newMessage.author?.tag}, 봇여부: ${newMessage.author?.bot}, 임베드개수: ${newMessage.embeds?.length}`);
+
+  // 디스코드 초대 링크 자동 감지/삭제 (메시지를 "수정"해서 링크를 끼워넣는 경우 대응)
+  try {
+    const wasDeleted = await handleAntiInviteLink(newMessage);
+    if (wasDeleted) return;
+  } catch (err) {
+    console.error('초대 링크 감지(수정) 처리 중 오류:', err);
+  }
 
   try {
     const purchaseLogCommand = client.commands.get('구매로그');
