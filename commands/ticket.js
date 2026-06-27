@@ -521,7 +521,18 @@ async function createTicketChannel(interaction, type) {
   }
 
   // ── 티켓 채널에 환영 메시지 전송 ──
-  const adminMention = adminRoleId ? `<@&${adminRoleId}>` : '@관리자';
+  // ⚠️ adminRoleId가 .env에 설정되지 않았거나, 설정된 ID가 이 서버에 존재하지 않는 역할이면
+  //    실제 멘션(<@&id>)이 아니라 그냥 글자 '@관리자'가 전송됩니다.
+  //    글자 '@관리자'는 멘션이 아니므로 알림(핑)이 절대 가지 않습니다 — 이게 핑 안 가는 원인 중 하나입니다.
+  if (!adminRoleId) {
+    console.warn('⚠️ TICKET_ADMIN_ROLE_ID가 .env에 설정되어 있지 않아서 관리자 멘션이 동작하지 않아요!');
+  } else if (!guild.roles.cache.get(adminRoleId)) {
+    console.warn(`⚠️ TICKET_ADMIN_ROLE_ID(${adminRoleId})에 해당하는 역할을 이 서버에서 찾을 수 없어요! 역할 ID를 다시 확인해주세요.`);
+  }
+
+  const adminMention = (adminRoleId && guild.roles.cache.get(adminRoleId))
+    ? `<@&${adminRoleId}>`
+    : '⚠️ (관리자 역할 미설정)';
   const welcomeContent =
     `• 신속하고 정확한 꿀벌로벅스 ${adminMention} <@${user.id}> •`;
 
@@ -536,6 +547,12 @@ async function createTicketChannel(interaction, type) {
     content: welcomeContent,
     embeds: [formEmbed],
     components: [closeRow],
+    // ── 역할 멘션 + 유저 멘션이 확실히 알림(핑)으로 가도록 명시적으로 허용 ──
+    // (allowedMentions를 지정하지 않으면 일부 환경에서 멘션 텍스트는 보여도 핑이 안 갈 수 있음)
+    allowedMentions: {
+      roles: adminRoleId ? [adminRoleId] : [],
+      users: [user.id],
+    },
   });
 
   // ── 자동 구매 안내 임베드 + 계좌 드롭다운 전송 ──
