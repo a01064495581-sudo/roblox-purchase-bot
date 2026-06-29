@@ -62,7 +62,6 @@ function buildStockEmbed({ robux, available, selectedValues }) {
     .setImage(BANNER_IMAGE_URL)
     .setTitle('🌀 실시간 로벅스 재고 🌀')
     .setDescription(
-      `*(10분마다 로벅스 재고 새로고침)*\n` +
       `\n## <:bux_gold:1516382148439965801> 로벅스 재고 : ${robux.toLocaleString('ko-KR')} <:bux_gold:1516382148439965801>\n` +
       `\`\`\`\n` +
       `🚦 처리가능 여부 :  ${isAvailable ? '가능 ✅' : '불가능 ❌'}\n` +
