@@ -175,6 +175,18 @@ client.on('interactionCreate', async (interaction) => {
         console.error('채널 삭제 버튼 처리 중 오류:', err);
       }
     }
+
+    // 실시간재고 지급방식 멀티 선택 처리 (stock.js, 완전히 독립)
+    if (interaction.customId?.startsWith('stock_pay')) {
+      const stockCommand = client.commands.get('실시간재고');
+      if (stockCommand?.handleComponent) {
+        try {
+          await stockCommand.handleComponent(interaction);
+        } catch (err) {
+          console.error('실시간재고 선택메뉴 처리 중 오류:', err);
+        }
+      }
+    }
   }
 });
 
