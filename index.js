@@ -12,6 +12,7 @@ const { handleAntiInviteLink } = require('./commands/anti-invite-link.js');
 const deleteChannelsCommand = require('./commands/delete-channels.js');
 const ticketCommand = require('./commands/ticket.js');
 const { startNightLockdown } = require('./lib/night-lockdown.js');
+const { startNightSlowmode } = require('./lib/night-slowmode.js');
 
 // Render는 Web Service가 특정 포트에서 응답해야 배포를 "성공"으로 인식합니다.
 // 디스코드 봇 자체는 포트가 필요 없지만, 이 더미 서버를 띄워서 Render의 포트 감지를 통과시킵니다.
@@ -96,6 +97,7 @@ client.once('ready', async () => {
   await registerSlashCommands();
   startBumpReminder(client);
   startNightLockdown(client);
+  startNightSlowmode(client);
 });
 
 // 슬래시 명령어 실행 + 버튼/모달 상호작용 처리
