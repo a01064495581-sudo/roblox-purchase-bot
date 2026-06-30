@@ -56,7 +56,7 @@ const TICKET_META = {
     channelPrefix: '로벅스구매',
   },
   [TICKET_TYPE.INGAME]: {
-    label: '🎮 인게임 구매 문의',
+    label: '🎮 게임 아이템 구매 문의',
     emoji: '🎮',
     color: 0x57c87e,       // 초록색
     categoryEnv: 'TICKET_INGAME_CATEGORY_ID',
