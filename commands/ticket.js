@@ -23,6 +23,7 @@ const { isAllowed, replyNoPermission } = require('../lib/permissions.js');
 const {
   buildAccountSelectRow,
   buildGuideEmbed,
+  buildAccountConfirmEmbed,
   fetchRobloxProfile,
   ACCOUNT_SELECT_PREFIX,
 } = require('../lib/account-select.js');
@@ -661,6 +662,26 @@ async function handleAccountSelect(interaction) {
       embeds: [updatedEmbed],
       components: [accountRow],
     });
+
+    // ── 계좌 확정 안내를 별도 메시지로 한 번 더 전송 ──
+    // (기존 안내 임베드 수정과는 별개로, 계좌번호를 복사하기 쉽게 코드블록으로 강조하고
+    //  티켓을 연 사람을 자동으로 멘션해서 놓치지 않게 함)
+    try {
+      const confirmEmbed = buildAccountConfirmEmbed({
+        robux: reparsed.robux,
+        accountIndex: accIdx,
+      });
+
+      if (confirmEmbed) {
+        await interaction.channel.send({
+          content: `<@${ticketAuthorId || interaction.user.id}> 계좌를 선택하셨어요! 아래 계좌로 입금해주세요 👇`,
+          embeds: [confirmEmbed],
+        });
+      }
+    } catch (confirmErr) {
+      console.error('계좌 확정 안내 전송 중 오류:', confirmErr);
+      // 이 메시지가 실패해도 위의 임베드 수정 자체는 이미 끝났으므로 티켓 흐름에는 영향 없음
+    }
   } catch (err) {
     console.error('계좌 드롭다운 처리 중 오류:', err);
     // 이미 reply/deferUpdate가 진행된 경우를 대비해 안전하게 followUp 시도
