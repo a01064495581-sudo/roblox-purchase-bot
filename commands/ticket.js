@@ -674,7 +674,7 @@ async function handleAccountSelect(interaction) {
 
       if (confirmEmbed) {
         await interaction.channel.send({
-          content: `<@${ticketAuthorId || interaction.user.id}> 계좌를 선택하셨어요! 아래 계좌로 입금해주세요 👇`,
+          content: `<@${ticketAuthorId || interaction.user.id}> 이중창인증 필수입니다! 아래 계좌로 입금해주세요 👇`,
           embeds: [confirmEmbed],
         });
       }
