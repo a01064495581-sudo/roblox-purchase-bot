@@ -12,6 +12,7 @@ const {
   StringSelectMenuBuilder,
 } = require('discord.js');
 const { isAllowed, replyNoPermission } = require('../lib/permissions');
+const { writeState } = require('../lib/stock-state');
 
 // ─────────────────────────────────────────
 // 여기만 수정하면 됩니다
@@ -171,8 +172,14 @@ module.exports = {
 
     try {
       const channel = await sendOrEditStockEmbed(interaction.client, { robux, available, selectedValues });
+
+      // 처리가능여부/지급방식(+ 이 시점의 로벅스 수량)을 저장해둡니다.
+      // 이후 10분마다 도는 자동 갱신(lib/stock-auto-refresh.js)이 이 값을 그대로 이어받아
+      // "로벅스 재고 숫자만" 로블록스 API로 자동 업데이트합니다.
+      writeState({ robux, available, selectedValues, updatedAt: Date.now() });
+
       await interaction.editReply({
-        content: `✅ 실시간 재고가 업데이트됐어요 → ${channel}`,
+        content: `✅ 실시간 재고가 업데이트됐어요 → ${channel}\n🔄 이제부터 로벅스 수량은 10분마다 로블록스 계정과 자동으로 동기화돼요. (ROBLOX_COOKIE가 설정되어 있어야 해요)`,
         components: [],
       });
     } catch (err) {
@@ -183,4 +190,8 @@ module.exports = {
       });
     }
   },
+
+  // lib/stock-auto-refresh.js 에서 재사용하기 위해 내부 함수도 함께 내보냅니다.
+  buildStockEmbed,
+  sendOrEditStockEmbed,
 };
