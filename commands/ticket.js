@@ -610,10 +610,13 @@ async function handleAccountSelect(interaction) {
   try {
     const ticketAuthorId = interaction.customId.slice('ticket_acc_select:'.length);
 
-    // ── 권한 체크: 티켓을 연 사람 본인만 선택 가능 ──
-    if (ticketAuthorId && interaction.user.id !== ticketAuthorId) {
+    // ── 권한 체크: 티켓을 연 사람 본인 또는 관리자만 선택 가능 ──
+    const isAuthor = ticketAuthorId && interaction.user.id === ticketAuthorId;
+    const isAdmin  = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
+                  || isAllowed(interaction);
+    if (!isAuthor && !isAdmin) {
       return interaction.reply({
-        content: '🚫 이 계좌 선택은 티켓을 연 본인만 할 수 있어요.',
+        content: '🚫 이 계좌 선택은 티켓을 연 본인 또는 관리자만 할 수 있어요.',
         ephemeral: true,
       });
     }
